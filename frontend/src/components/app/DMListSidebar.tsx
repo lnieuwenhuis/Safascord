@@ -1,0 +1,24 @@
+const dms = Array.from({ length: 15 }).map((_, i) => ({ id: i, name: `User ${i + 1}` }))
+
+import UserCard from "./UserCard"
+
+export default function DMListSidebar() {
+  return (
+    <aside className="flex h-dvh w-full flex-col border-r border-white/10 bg-[#0b1220]">
+      <div className="px-3 py-3">
+        <div className="mb-3 px-2 text-sm font-semibold">Direct Messages</div>
+        <ul className="max-h-full space-y-1">
+          {dms.map((dm) => (
+            <li key={dm.id} className="flex items-center gap-2 rounded px-2 py-1 hover:bg-white/5">
+              <span className="h-6 w-6 rounded-full bg-blue-600" />
+              <span className="text-sm">{dm.name}</span>
+            </li>
+          ))}
+        </ul>
+      </div>
+      <div className="mt-auto">
+        <UserCard />
+      </div>
+    </aside>
+  )
+}
