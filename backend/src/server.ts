@@ -1,19 +1,64 @@
 import Fastify, { FastifyRequest } from "fastify"
 import cors from "@fastify/cors"
+import fastifyStatic from "@fastify/static"
+import fastifyMultipart from "@fastify/multipart"
 import { Pool } from "pg"
 import bcrypt from "bcryptjs"
 import jwt from "jsonwebtoken"
+import Redis from "ioredis"
+import path from "path"
+import fs from "fs"
+import { pipeline } from "stream"
+import util from "util"
+import { fileURLToPath } from 'url'
+import { dirname } from 'path'
+
+const __filename = fileURLToPath(import.meta.url)
+const __dirname = dirname(__filename)
+const pump = util.promisify(pipeline)
 
 const app = Fastify({ logger: true })
+const redis = new Redis(process.env.REDIS_URL || "redis://localhost:6379")
 
 async function start() {
   await app.register(cors, {
     origin: (origin, cb) => cb(null, true),
     credentials: true,
   })
+  await app.register(fastifyMultipart)
+  await app.register(fastifyStatic, {
+    root: path.join(__dirname, '../uploads'),
+    prefix: '/api/uploads/',
+  })
+
+  // Migrations
+  try {
+    await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS bio TEXT;`)
+    await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS banner_color TEXT DEFAULT '#000000';`)
+    await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS banner_url TEXT;`)
+    await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar_url TEXT;`)
+    await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'online';`)
+  } catch (e) {
+    console.error("Migration failed", e)
+  }
 }
 
 app.get("/api/health", async () => ({ ok: true }))
+
+app.post("/api/upload", async (req, reply) => {
+  const data = await req.file()
+  if (!data) return { error: "No file" }
+  const ext = path.extname(data.filename)
+  const name = `${Date.now()}-${Math.random().toString(36).slice(2)}${ext}`
+  const uploadsDir = path.join(__dirname, '../uploads')
+  if (!fs.existsSync(uploadsDir)) {
+    fs.mkdirSync(uploadsDir, { recursive: true })
+  }
+  const filepath = path.join(uploadsDir, name)
+  await pump(data.file, fs.createWriteStream(filepath))
+  const url = `/api/uploads/${name}`
+  return { url }
+})
 
 app.post("/api/auth/register", async (req) => {
   const body = req.body as any
@@ -68,13 +113,66 @@ app.get("/api/me", async (req) => {
   try {
     const payload = jwt.verify(auth.replace(/^Bearer\s+/i, ""), JWT_SECRET) as any
     const r = await pool.query(
-      `SELECT id::text AS id, username, email, display_name
+      `SELECT id::text AS id, username, email, display_name, bio, banner_color, banner_url, avatar_url, status
        FROM users WHERE id = $1::uuid`,
       [payload.sub]
     )
     const u = r.rows[0]
     if (!u) return { error: "Unauthorized" }
-    return { user: { id: u.id, username: u.username, email: u.email, displayName: u.display_name } }
+    return { user: { 
+      id: u.id, 
+      username: u.username, 
+      email: u.email, 
+      displayName: u.display_name,
+      bio: u.bio,
+      bannerColor: u.banner_color,
+      bannerUrl: u.banner_url,
+      avatarUrl: u.avatar_url,
+      status: u.status
+    } }
+  } catch {
+    return { error: "Unauthorized" }
+  }
+})
+
+app.patch("/api/me/profile", async (req) => {
+  const auth = (req.headers as any).authorization as string | undefined
+  const body = req.body as any
+  const { bio, bannerColor, bannerUrl, avatarUrl, status } = body || {}
+  if (!auth) return { error: "Unauthorized" }
+  try {
+    const payload = jwt.verify(auth.replace(/^Bearer\s+/i, ""), JWT_SECRET) as any
+    
+    const fields: string[] = []
+    const values: any[] = []
+    let idx = 1
+    
+    if (bio !== undefined) { fields.push(`bio=$${idx++}`); values.push(bio) }
+    if (bannerColor !== undefined) { fields.push(`banner_color=$${idx++}`); values.push(bannerColor) }
+    if (bannerUrl !== undefined) { fields.push(`banner_url=$${idx++}`); values.push(bannerUrl) }
+    if (avatarUrl !== undefined) { fields.push(`avatar_url=$${idx++}`); values.push(avatarUrl) }
+    if (status !== undefined) { fields.push(`status=$${idx++}`); values.push(status) }
+    
+    if (fields.length === 0) return { error: "No fields" }
+    
+    values.push(payload.sub)
+    const r = await pool.query(
+      `UPDATE users SET ${fields.join(", ")} WHERE id=$${idx}::uuid
+       RETURNING id::text AS id, username, email, display_name, bio, banner_color, banner_url, avatar_url, status`,
+      values
+    )
+    const u = r.rows[0]
+    return { user: { 
+      id: u.id, 
+      username: u.username, 
+      email: u.email, 
+      displayName: u.display_name,
+      bio: u.bio,
+      bannerColor: u.banner_color,
+      bannerUrl: u.banner_url,
+      avatarUrl: u.avatar_url,
+      status: u.status
+    } }
   } catch {
     return { error: "Unauthorized" }
   }
@@ -280,7 +378,13 @@ app.get("/api/users", async (req: FastifyRequest<{ Querystring: { serverId?: str
   try {
     const serverId = req.query.serverId
     const r = await pool.query(
-      `SELECT roles.display_group AS title, ARRAY_AGG(users.username ORDER BY users.username) AS users
+      `SELECT roles.display_group AS title, 
+              json_agg(json_build_object(
+                'username', users.username, 
+                'displayName', users.display_name, 
+                'avatarUrl', users.avatar_url,
+                'status', users.status
+              ) ORDER BY users.username) AS users
        FROM server_members
        JOIN roles ON roles.id = server_members.role_id
        JOIN users ON users.id = server_members.user_id
@@ -289,13 +393,13 @@ app.get("/api/users", async (req: FastifyRequest<{ Querystring: { serverId?: str
        ORDER BY roles.display_group`,
       [serverId || null]
     )
-    const groups = r.rows as { title: string; users: string[] }[]
+    const groups = r.rows as { title: string; users: { username: string; displayName: string; avatarUrl: string; status: string }[] }[]
     return { groups }
   } catch {
     const groups = [
-      { title: "Admin", users: ["Dylan", "Koda"] },
-      { title: "Staff", users: ["Jayden", "Squires"] },
-      { title: "FST", users: ["Alex", "Flubber", "Fraser", "Jack", "Sam"] },
+      { title: "Admin", users: [{ username: "Dylan", displayName: "Dylan" }, { username: "Koda", displayName: "Koda" }] },
+      { title: "Staff", users: [{ username: "Jayden", displayName: "Jayden" }, { username: "Squires", displayName: "Squires" }] },
+      { title: "FST", users: [{ username: "Alex", displayName: "Alex" }, { username: "Flubber", displayName: "Flubber" }, { username: "Fraser", displayName: "Fraser" }, { username: "Jack", displayName: "Jack" }, { username: "Sam", displayName: "Sam" }] },
     ]
     return { groups }
   }
@@ -307,7 +411,12 @@ app.get("/api/messages", async (req: FastifyRequest<{ Querystring: { channel?: s
     const limit = Math.min(Math.max(parseInt(req.query.limit || "50"), 1), 200)
     const before = req.query.before || null
     const r = await pool.query(
-      `SELECT messages.id::text AS id, COALESCE(users.display_name, users.username) AS user, messages.content AS text, messages.created_at AS ts
+      `SELECT messages.id::text AS id, 
+              COALESCE(users.display_name, users.username) AS user, 
+              users.avatar_url AS user_avatar,
+              users.id::text AS user_id,
+              messages.content AS text, 
+              messages.created_at AS ts
        FROM messages
        JOIN channels ON channels.id = messages.channel_id
        LEFT JOIN users ON users.id = messages.user_id
@@ -317,8 +426,8 @@ app.get("/api/messages", async (req: FastifyRequest<{ Querystring: { channel?: s
        LIMIT $3`,
       [channelName || null, before, limit]
     )
-    const rows = r.rows as { id: string; user: string | null; text: string; ts: string }[]
-    return { messages: rows.reverse().map(m => ({ id: m.id, user: m.user ?? "User", text: m.text, ts: m.ts })) }
+    const rows = r.rows as { id: string; user: string | null; user_avatar: string | null; user_id: string | null; text: string; ts: string }[]
+    return { messages: rows.reverse().map(m => ({ id: m.id, user: m.user ?? "User", userAvatar: m.user_avatar, userId: m.user_id, text: m.text, ts: m.ts })) }
   } catch {
     const messages = Array.from({ length: 24 }).map((_, i) => ({ id: String(i), user: `User ${i % 5}`, text: `Message ${i + 1}` }))
     return { messages }
@@ -343,17 +452,13 @@ app.post("/api/messages", async (req) => {
     )
     const m = r.rows[0] as { id: string; text: string; ts: string }
     const ur = await pool.query(
-      `SELECT COALESCE(display_name, username) AS name FROM users WHERE id=$1::uuid LIMIT 1`,
+      `SELECT COALESCE(display_name, username) AS name, avatar_url FROM users WHERE id=$1::uuid LIMIT 1`,
       [payload.sub]
     )
     const sender = (ur.rows[0]?.name as string) || "User"
+    const avatar = ur.rows[0]?.avatar_url as string | null
     try {
-      const base = process.env.REALTIME_BASE_HTTP || "http://localhost:4001"
-      await fetch(`${base}/publish`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ channel, data: { type: "message", channel, message: m, user: sender, userId: payload.sub } }),
-      })
+      await redis.publish("messages", JSON.stringify({ channel, data: { type: "message", channel, message: m, user: sender, userAvatar: avatar, userId: payload.sub } }))
     } catch {}
     return { message: m }
   } catch {

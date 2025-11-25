@@ -21,7 +21,7 @@ export default function ConfirmDialog({
   if (!open) return null
   return createPortal(
     <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/60 backdrop-blur-sm supports-[backdrop-filter]:bg-black/50 p-4" onClick={onCancel}>
-      <div className="w-[420px] rounded-lg border border-white/10 bg-[#0b1220] p-4 shadow-xl" onClick={(e) => e.stopPropagation()}>
+      <div className="w-[420px] rounded-lg border border-border bg-card p-4 shadow-xl text-card-foreground" onClick={(e) => e.stopPropagation()}>
         <div className="text-lg font-semibold">{title}</div>
         {description ? <div className="mt-2 text-sm text-muted-foreground">{description}</div> : null}
         <div className="mt-6 flex items-center justify-end gap-2">

@@ -2,11 +2,11 @@ import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Hash, MessageSquare } from "lucide-react"
 import { useEffect, useRef, useState } from "react"
-import { api } from "@/lib/api"
+import { api, API_BASE, getFullUrl } from "@/lib/api"
 import { useAuth } from "@/hooks/useAuth"
 
 export default function ChatPanel({ variant, channelName, guildName }: { variant: "guild" | "dm"; channelName: string; guildName?: string }) {
-  const [msgs, setMsgs] = useState<{ id: string; user: string; text: string; ts?: string }[]>([])
+  const [msgs, setMsgs] = useState<{ id: string; user: string; userAvatar?: string; userId?: string; text: string; ts?: string }[]>([])
   const [text, setText] = useState("")
   const [typing, setTyping] = useState<Set<string>>(new Set())
   const listRef = useRef<HTMLDivElement | null>(null)
@@ -16,7 +16,10 @@ export default function ChatPanel({ variant, channelName, guildName }: { variant
   const [loadingMore, setLoadingMore] = useState(false)
   const { user } = useAuth()
   const token = typeof window !== "undefined" ? (localStorage.getItem("token") || "") : ""
+  
   const display = (user && (user.displayName || user.username)) || "You"
+  const myAvatar = user?.avatarUrl
+
   function fmt(ts?: string) {
     if (!ts) return ""
     try { return new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) } catch { return "" }
@@ -55,7 +58,7 @@ export default function ChatPanel({ variant, channelName, guildName }: { variant
       ws.onmessage = (ev) => {
         let data: unknown
         try { data = JSON.parse(String(ev.data)) } catch { return }
-        const d = data as { type?: string; channel?: string; user?: string; userId?: string; active?: boolean; message?: { id: string; text: string; ts?: string } }
+        const d = data as { type?: string; channel?: string; user?: string; userAvatar?: string; userId?: string; active?: boolean; message?: { id: string; text: string; ts?: string } }
         if (d.type === "typing" && d.channel === channelName && d.user) {
           if (user?.id && d.userId === user.id) return
           const name = d.user
@@ -70,7 +73,14 @@ export default function ChatPanel({ variant, channelName, guildName }: { variant
           setTyping((prev) => prev) // no-op, keep typing as-is
           setMsgs((prev) => {
             if (prev.some((x) => x.id === d.message!.id)) return prev
-            return [...prev, { id: d.message!.id, user: d.user || "User", text: d.message!.text, ts: d.message!.ts }]
+            return [...prev, { 
+              id: d.message!.id, 
+              user: d.user || "User", 
+              userAvatar: d.userAvatar,
+              userId: d.userId,
+              text: d.message!.text, 
+              ts: d.message!.ts 
+            }]
           })
           if (d.user) setTyping((prev) => { const next = new Set(prev); next.delete(d.user!); return next })
         }
@@ -111,7 +121,7 @@ export default function ChatPanel({ variant, channelName, guildName }: { variant
         const ts = r.message?.ts
         setMsgs((prev) => {
           if (prev.some((x) => x.id === r.message.id)) return prev
-          return [...prev, { id: r.message.id, user: display, text: t, ts }]
+          return [...prev, { id: r.message.id, user: display, userAvatar: myAvatar || undefined, userId: user?.id, text: t, ts }]
         })
       } else {
         setMsgs((prev) => [...prev, { id: String(Date.now()), user: display, text: t }])
@@ -138,8 +148,8 @@ export default function ChatPanel({ variant, channelName, guildName }: { variant
   }
 
   return (
-    <div className="min-h-0 flex flex-1 flex-col">
-      <div className="flex h-12 items-center justify-between border-b border-white/10 px-4">
+    <div className="min-h-0 flex flex-1 flex-col bg-background text-foreground">
+      <div className="flex h-12 items-center justify-between border-b border-border px-4 shadow-sm">
         <div className="flex items-center gap-2">
           {variant === "guild" ? (
             <Hash className="h-4 w-4 text-muted-foreground" />
@@ -156,25 +166,42 @@ export default function ChatPanel({ variant, channelName, guildName }: { variant
       <div ref={listRef} onScroll={onScroll} className="flex-1 min-h-0 overflow-y-auto p-4">
         <div className="space-y-4">
           {(() => {
-            const groups: { user: string; items: { id: string; user: string; text: string; ts?: string }[] }[] = []
+            const groups: { user: string; userAvatar?: string; userId?: string; items: { id: string; user: string; text: string; ts?: string }[] }[] = []
             for (const m of msgs) {
               const last = groups[groups.length - 1]
               if (last && last.user === m.user) last.items.push(m)
-              else groups.push({ user: m.user, items: [m] })
+              else groups.push({ user: m.user, userAvatar: m.userAvatar, userId: m.userId, items: [m] })
             }
             return groups.map((g) => {
               const first = g.items[0]
+              
+              // Use current user avatar if userId matches
+              const isMe = user && (g.userId === user.id || g.user === display)
+              const avatarUrl = isMe && user.avatarUrl 
+                ? getFullUrl(user.avatarUrl)
+                : getFullUrl(g.userAvatar)
+
               return (
-                <div key={first.id} className="flex items-start gap-3">
-                  <div className="h-8 w-8 rounded-full bg-blue-600" />
-                  <div>
+                <div key={first.id} className="flex items-start gap-3 group hover:bg-muted/50 -mx-4 px-4 py-0.5">
+                  <div className="h-8 w-8 rounded-full bg-primary/20 mt-0.5 overflow-hidden flex-shrink-0">
+                    {avatarUrl ? (
+                      <img src={avatarUrl} alt={g.user} className="h-full w-full object-cover block" />
+                    ) : (
+                      <div className="h-full w-full bg-primary flex items-center justify-center text-[10px] text-primary-foreground font-bold">
+                        {g.user.substring(0, 2).toUpperCase()}
+                      </div>
+                    )}
+                  </div>
+                  <div className="min-w-0 flex-1">
                     <div className="flex items-baseline gap-2">
-                      <div className="text-sm font-medium">{first.user}</div>
+                      <div className="text-sm font-medium text-foreground hover:underline cursor-pointer">
+                        {isMe && user.displayName ? user.displayName : g.user}
+                      </div>
                       {first.ts && <div className="text-xs text-muted-foreground">{fmt(first.ts)}</div>}
                     </div>
-                    <div className="text-sm text-muted-foreground">{first.text}</div>
+                    <div className="text-sm text-foreground whitespace-pre-wrap break-words">{first.text}</div>
                     {g.items.slice(1).map((it) => (
-                      <div key={it.id} className="mt-1 text-sm text-muted-foreground">{it.text}</div>
+                      <div key={it.id} className="mt-0.5 text-sm text-foreground whitespace-pre-wrap break-words">{it.text}</div>
                     ))}
                   </div>
                 </div>
@@ -184,11 +211,12 @@ export default function ChatPanel({ variant, channelName, guildName }: { variant
         </div>
       </div>
       {typing.size > 0 && (
-        <div className="px-4 pt-1 text-xs text-muted-foreground">{Array.from(typing).join(", ")} typing…</div>
+        <div className="px-4 pt-1 text-xs text-muted-foreground animate-pulse font-medium">{Array.from(typing).join(", ")} is typing…</div>
       )}
-      <div className="flex h-16 items-center border-t border-white/10 px-3">
+      <div className="flex h-16 items-center border-t border-border px-3 bg-background">
         <div className="flex w-full items-center gap-2">
           <Input
+            className="border-0 bg-muted/50 focus-visible:ring-1 focus-visible:ring-ring"
             placeholder={variant === "guild" ? `Message #${channelName}` : `Message ${channelName}`}
             value={text}
             onChange={(e) => {

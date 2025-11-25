@@ -20,9 +20,9 @@ export default function AppShell({
 }) {
   const cols = variant === "dm" ? "grid-cols-[64px_260px_1fr]" : "grid-cols-[64px_260px_1fr_300px]"
   return (
-    <div className={`grid h-dvh ${cols} overflow-hidden bg-gradient-to-b from-[#0a0f1a] to-[#0b1b2e]`}>
+    <div className={`grid h-dvh ${cols} overflow-hidden bg-background text-foreground`}>
       <ServerSidebar />
-      {variant === "dm" ? <DMListSidebar /> : <ChannelSidebar guildId={guildId} />}
+      {variant === "dm" ? <DMListSidebar /> : <ChannelSidebar guildId={guildId} activeChannelId={channelName} />}
       {mode === "overview" ? (
         <OverviewPanel />
       ) : (

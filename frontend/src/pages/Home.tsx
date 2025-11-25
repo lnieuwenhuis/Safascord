@@ -1,5 +1,4 @@
 import { Button } from "@/components/ui/button"
-import { LogIn } from "lucide-react"
 import { Link } from "react-router-dom"
 
 function GoogleIcon() {
@@ -19,74 +18,97 @@ function GoogleIcon() {
 
 export default function Home() {
   return (
-    <div className="min-h-dvh bg-gradient-to-b from-[#0a0f1a] to-[#0b1b2e]">
-      <div className="mx-auto max-w-6xl px-6 py-16">
-        <header className="mb-12 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="h-8 w-8 rounded-md bg-blue-600" />
-            <span className="text-lg font-semibold">Discord Clone</span>
+    <div className="flex min-h-dvh flex-col bg-background text-foreground">
+      <header className="sticky top-0 z-50 w-full border-b border-border/40 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+        <div className="mx-auto flex h-14 max-w-7xl items-center justify-between px-6">
+          <div className="flex items-center gap-2">
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-primary-foreground font-bold">
+              D
+            </div>
+            <span className="text-lg font-bold tracking-tight">Discord Clone</span>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-4">
             <Link to="/auth">
-              <Button variant="outline" className="border-white/10">
-                <LogIn className="mr-2 h-4 w-4" />
+              <Button variant="ghost" size="sm">
                 Sign In
               </Button>
             </Link>
+            <Link to="/channels/@me">
+              <Button size="sm">
+                Open App
+              </Button>
+            </Link>
           </div>
-        </header>
-        <main className="grid gap-8">
-          <div className="mx-auto max-w-3xl text-center">
-            <h1 className="text-4xl font-bold tracking-tight md:text-6xl">
-              Hang out and chat with friends
+        </div>
+      </header>
+
+      <main className="flex-1">
+        <section className="relative overflow-hidden py-24 md:py-32">
+          <div className="absolute inset-0 -z-10 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-primary/20 via-background to-background" />
+          <div className="mx-auto flex max-w-5xl flex-col items-center gap-6 px-6 text-center">
+            <h1 className="text-4xl font-extrabold tracking-tight sm:text-5xl md:text-6xl lg:text-7xl">
+              Imagine a place...
             </h1>
-            <p className="mt-4 text-balance text-muted-foreground">
-              A modern, dark-first reimagining of Discord. Servers, channels,
-              DMs, and more—built with React, Tailwind, and Shadcn UI.
+            <p className="max-w-2xl text-lg text-muted-foreground sm:text-xl">
+              ...where you can belong to a school club, a gaming group, or a worldwide art community. 
+              Where just you and a handful of friends can spend time together. 
+              A place that makes it easy to talk every day and hang out more often.
             </p>
-            <div className="mt-8 flex items-center justify-center gap-4">
+            <div className="mt-4 flex flex-wrap items-center justify-center gap-4">
               <Link to="/channels/@me">
-                <Button variant="brand" size="lg">
-                  Enter App
+                <Button size="lg" className="h-12 rounded-full px-8 text-base">
+                  Open Discord Clone
                 </Button>
               </Link>
               <Link to="/auth">
-                <Button
-                  size="lg"
-                  className="bg-white text-black hover:bg-white/90"
-                >
+                <Button size="lg" variant="secondary" className="h-12 rounded-full px-8 text-base">
                   <GoogleIcon />
                   <span className="ml-2">Continue with Google</span>
                 </Button>
               </Link>
             </div>
           </div>
-          <div className="mx-auto grid max-w-5xl grid-cols-1 gap-6 md:grid-cols-3">
-            <div className="rounded-lg border border-white/10 bg-card p-6">
-              <div className="mb-2 h-10 w-10 rounded-md bg-blue-600/80" />
-              <h3 className="text-lg font-semibold">Servers & Channels</h3>
-              <p className="text-sm text-muted-foreground">
-                Organize conversations by server and channel with a clean
-                sidebar layout.
-              </p>
+        </section>
+
+        <section className="mx-auto grid max-w-6xl grid-cols-1 gap-8 px-6 py-20 md:grid-cols-3">
+          <div className="group relative overflow-hidden rounded-2xl border border-border bg-card p-8 transition-all hover:shadow-lg">
+            <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-lg bg-primary/10 text-primary">
+              <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="7" height="18" x="3" y="3" rx="1"/><rect width="7" height="18" x="14" y="3" rx="1"/></svg>
             </div>
-            <div className="rounded-lg border border-white/10 bg-card p-6">
-              <div className="mb-2 h-10 w-10 rounded-md bg-blue-500/80" />
-              <h3 className="text-lg font-semibold">Direct Messages</h3>
-              <p className="text-sm text-muted-foreground">
-                Chat one-on-one with friends and start group DMs seamlessly.
-              </p>
-            </div>
-            <div className="rounded-lg border border-white/10 bg-card p-6">
-              <div className="mb-2 h-10 w-10 rounded-md bg-blue-400/80" />
-              <h3 className="text-lg font-semibold">Discover & Explore</h3>
-              <p className="text-sm text-muted-foreground">
-                Find new communities and servers tailored to your interests.
-              </p>
-            </div>
+            <h3 className="mb-2 text-xl font-semibold">Servers & Channels</h3>
+            <p className="text-muted-foreground">
+              Organize your conversations by topic. Create servers for your communities and channels for specific discussions.
+            </p>
           </div>
-        </main>
-      </div>
+          <div className="group relative overflow-hidden rounded-2xl border border-border bg-card p-8 transition-all hover:shadow-lg">
+            <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-lg bg-primary/10 text-primary">
+              <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+            </div>
+            <h3 className="mb-2 text-xl font-semibold">Direct Messages</h3>
+            <p className="text-muted-foreground">
+              Chat one-on-one with friends or create group chats for private conversations away from servers.
+            </p>
+          </div>
+          <div className="group relative overflow-hidden rounded-2xl border border-border bg-card p-8 transition-all hover:shadow-lg">
+            <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-lg bg-primary/10 text-primary">
+              <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="4"/><line x1="21.17" x2="12" y1="8" y2="8"/><line x1="3.95" x2="8.54" y1="6.06" y2="14"/><line x1="10.88" x2="15.46" y1="21.94" y2="14"/></svg>
+            </div>
+            <div className="mb-2 flex items-center gap-2">
+              <h3 className="text-xl font-semibold">Discover</h3>
+              <span className="rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">New</span>
+            </div>
+            <p className="text-muted-foreground">
+              Find new communities to join. Explore public servers based on your interests and hobbies.
+            </p>
+          </div>
+        </section>
+      </main>
+
+      <footer className="border-t border-border bg-muted/30 py-12">
+        <div className="mx-auto max-w-7xl px-6 text-center text-sm text-muted-foreground">
+          <p>&copy; {new Date().getFullYear()} Discord Clone. Built with React & Tailwind.</p>
+        </div>
+      </footer>
     </div>
   )
 }

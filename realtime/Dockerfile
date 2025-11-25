@@ -1,17 +1,16 @@
-FROM node:20-alpine AS build
+FROM oven/bun:1 AS build
 WORKDIR /app
-COPY package.json .
-RUN npm install --production=false
+COPY package.json bun.lock ./
+RUN bun install
 COPY tsconfig.json ./
 COPY src ./src
-RUN npm run build
+RUN bun run build
 
-FROM node:20-alpine
+FROM oven/bun:1
 WORKDIR /app
 ENV NODE_ENV=production
-COPY package.json .
-RUN npm install --production
+COPY package.json bun.lock ./
+RUN bun install --production
 COPY --from=build /app/dist ./dist
 EXPOSE 4001
-CMD ["node", "dist/ws.js"]
-
+CMD ["bun", "run", "dist/ws.js"]

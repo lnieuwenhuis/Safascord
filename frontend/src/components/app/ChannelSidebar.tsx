@@ -7,7 +7,7 @@ import { api } from "@/lib/api"
 import ConfirmDialog from "./ConfirmDialog"
 import { Input } from "@/components/ui/input"
 
-export default function ChannelSidebar({ guildId }: { guildId?: string }) {
+export default function ChannelSidebar({ guildId, activeChannelId }: { guildId?: string, activeChannelId?: string }) {
   const navigate = useNavigate()
   const [sections, setSections] = useState<{ title: string; channels: string[] }[]>([])
   const [serverName, setServerName] = useState<string>("")
@@ -35,7 +35,7 @@ export default function ChannelSidebar({ guildId }: { guildId?: string }) {
     }).catch(() => setServerName(""))
   }, [guildId, token])
   return (
-    <aside className="flex h-dvh w-full flex-col border-r border-white/10 bg-[#0b1220]">
+    <aside className="flex h-dvh w-full flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground">
       <div className="px-3 py-3">
         <div className="mb-3 flex items-center justify-between px-2">
           <div className="text-sm font-semibold">{serverName}</div>
@@ -56,14 +56,16 @@ export default function ChannelSidebar({ guildId }: { guildId?: string }) {
                 {s.channels.map((c) => (
                   <li
                     key={c}
-                    className="flex cursor-pointer items-center gap-2 rounded px-2 py-1 hover:bg-white/5"
+                    className={`flex cursor-pointer items-center gap-2 rounded px-2 py-1 ${c === activeChannelId ? 'bg-sidebar-accent text-sidebar-accent-foreground' : 'hover:bg-sidebar-accent hover:text-sidebar-accent-foreground'}`}
                     onClick={() => {
-                      if (guildId) setSelection({ channelId: c })
-                      navigate('/server')
+                      if (guildId) {
+                        setSelection({ channelId: c })
+                        navigate(`/server/${guildId}/channel/${c}`)
+                      }
                     }}
                     onContextMenu={(e) => { e.preventDefault(); setMenu({ channel: c, x: e.clientX, y: e.clientY }); setEditName(c); setEditChannel(c) }}
                   >
-                    <Hash className="h-4 w-4 text-muted-foreground" />
+                    <Hash className={`h-4 w-4 ${c === activeChannelId ? 'text-sidebar-accent-foreground' : 'text-muted-foreground'}`} />
                     <span className="text-sm">{c}</span>
                   </li>
                 ))}
@@ -76,18 +78,18 @@ export default function ChannelSidebar({ guildId }: { guildId?: string }) {
         <UserCard />
       </div>
       {menu && (
-        <div className="fixed z-[120] rounded border border-white/10 bg-[#0b1220] shadow" style={{ left: menu.x, top: menu.y }} onMouseLeave={() => setMenu(null)}>
+        <div className="fixed z-[120] rounded border border-border bg-popover shadow-md text-popover-foreground" style={{ left: menu.x, top: menu.y }} onMouseLeave={() => setMenu(null)}>
           {menu.channel === "__header__" ? (
             <>
-              <button className="block w-40 px-3 py-2 text-left hover:bg-white/5" onClick={() => { setNewChannelName(""); setNewChannelCategory("FST"); setEditOpen(true); setConfirmAction("create") }}>Create Channel</button>
-              <button className="block w-40 px-3 py-2 text-left hover:bg-white/5" onClick={async () => {
+              <button className="block w-40 px-3 py-2 text-left hover:bg-accent hover:text-accent-foreground text-sm" onClick={() => { setNewChannelName(""); setNewChannelCategory("FST"); setEditOpen(true); setConfirmAction("create") }}>Create Channel</button>
+              <button className="block w-40 px-3 py-2 text-left hover:bg-accent hover:text-accent-foreground text-sm" onClick={async () => {
                 setMenu(null)
                 setEditOpen(true)
                 setConfirmAction("create")
                 setNewChannelName("")
                 setNewChannelCategory("FST")
               }}>Create Category</button>
-              <button className="block w-40 px-3 py-2 text-left hover:bg-white/5" onClick={async () => {
+              <button className="block w-40 px-3 py-2 text-left hover:bg-accent hover:text-accent-foreground text-sm" onClick={async () => {
                 setMenu(null)
                 if (!guildId || !token) return
                 const r = await api.createInvite(token, guildId)
@@ -97,15 +99,15 @@ export default function ChannelSidebar({ guildId }: { guildId?: string }) {
             </>
           ) : (
             <>
-              <button className="block w-40 px-3 py-2 text-left hover:bg-white/5" onClick={() => { setEditOpen(true); setConfirmOpen(false); setConfirmAction("rename") }}>Edit name</button>
-              <button className="block w-40 px-3 py-2 text-left hover:bg-white/5" onClick={() => { setConfirmOpen(true); setConfirmAction("delete") }}>Delete channel</button>
+              <button className="block w-40 px-3 py-2 text-left hover:bg-accent hover:text-accent-foreground text-sm" onClick={() => { setEditOpen(true); setConfirmOpen(false); setConfirmAction("rename") }}>Edit name</button>
+              <button className="block w-40 px-3 py-2 text-left hover:bg-accent hover:text-accent-foreground text-sm text-destructive" onClick={() => { setConfirmOpen(true); setConfirmAction("delete") }}>Delete channel</button>
             </>
           )}
         </div>
       )}
       {editOpen && (
         <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/60 backdrop-blur-sm supports-[backdrop-filter]:bg-black/50 p-4" onClick={() => setEditOpen(false)}>
-          <div className="w-[420px] rounded-lg border border-white/10 bg-[#0b1220] p-4 shadow-xl" onClick={(e) => e.stopPropagation()}>
+          <div className="w-[420px] rounded-lg border border-border bg-card p-4 shadow-xl text-card-foreground" onClick={(e) => e.stopPropagation()}>
             <div className="text-lg font-semibold">{confirmAction === "create" ? "Create channel" : "Edit channel name"}</div>
             {confirmAction === "create" ? (
               <>

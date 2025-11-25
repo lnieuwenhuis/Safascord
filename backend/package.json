@@ -8,11 +8,14 @@
     "dev": "ts-node src/server.ts"
   },
   "dependencies": {
-    "fastify": "^4.29.1",
     "@fastify/cors": "^8.3.0",
-    "pg": "^8.11.3",
+    "@fastify/multipart": "^7.7.3",
+    "@fastify/static": "^6.5.0",
     "bcryptjs": "^2.4.3",
-    "jsonwebtoken": "^9.0.2"
+    "fastify": "^4.29.1",
+    "ioredis": "^5.8.2",
+    "jsonwebtoken": "^9.0.2",
+    "pg": "^8.11.3"
   },
   "devDependencies": {
     "ts-node": "^10.9.2",

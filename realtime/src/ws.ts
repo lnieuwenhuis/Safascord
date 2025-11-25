@@ -1,9 +1,30 @@
 import { WebSocketServer, WebSocket, RawData } from "ws"
 import http from "http"
+import Redis from "ioredis"
 
 type Msg = { type: string; channel?: string; user?: string; userId?: string }
 
 const port = Number(process.env.PORT || 4001)
+const redis = new Redis(process.env.REDIS_URL || "redis://localhost:6379")
+
+redis.subscribe("messages", (err) => {
+  if (err) console.error("Failed to subscribe to Redis:", err)
+  else console.log("Subscribed to Redis channel: messages")
+})
+
+redis.on("message", (channel, message) => {
+  if (channel === "messages") {
+    try {
+      const parsed = JSON.parse(message) as { channel?: string; data?: any }
+      if (parsed.channel && parsed.data) {
+        publish(parsed.channel, parsed.data)
+      }
+    } catch (err) {
+      console.error("Failed to parse Redis message:", err)
+    }
+  }
+})
+
 const server = http.createServer((req, res) => {
   if (!req.url) {
     res.statusCode = 404
@@ -23,23 +44,6 @@ const server = http.createServer((req, res) => {
     const exists = hasSubs || ((lingerUntil.get(channel) || 0) > Date.now())
     res.setHeader("Content-Type", "application/json")
     res.end(JSON.stringify({ exists }))
-    return
-  }
-  if (req.method === "POST" && url.pathname === "/publish") {
-    let body = ""
-    req.on("data", (chunk) => { body += chunk })
-    req.on("end", () => {
-      try {
-        const parsed = JSON.parse(body || "{}") as { channel?: string; data?: any }
-        const channel = parsed.channel || ""
-        if (channel && parsed.data) publish(channel, parsed.data)
-        res.setHeader("Content-Type", "application/json")
-        res.end(JSON.stringify({ ok: true }))
-      } catch {
-        res.statusCode = 400
-        res.end("bad request")
-      }
-    })
     return
   }
   res.statusCode = 404

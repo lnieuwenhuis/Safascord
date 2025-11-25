@@ -1,4 +1,5 @@
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom"
+import { AuthProvider } from "./components/AuthProvider"
 import Home from "./pages/Home"
 import Auth from "./pages/Auth"
 import DMs from "./pages/DMs"
@@ -12,8 +13,9 @@ import ProtectedRoute from "./components/routes/ProtectedRoute"
 
 export default function App() {
   return (
-    <BrowserRouter>
-      <Routes>
+    <AuthProvider>
+      <BrowserRouter>
+        <Routes>
         <Route path="/" element={<Home />} />
         <Route path="/auth" element={<Auth />} />
         <Route path="/channels/@me" element={<ProtectedRoute><DMs /></ProtectedRoute>} />
@@ -27,6 +29,7 @@ export default function App() {
         <Route path="/404" element={<NotFound />} />
         <Route path="*" element={<Navigate to="/404" replace />} />
       </Routes>
-    </BrowserRouter>
+      </BrowserRouter>
+    </AuthProvider>
   )
 }

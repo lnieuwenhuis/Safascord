@@ -20,7 +20,7 @@ export default function ServerSidebar() {
     api.servers(token).then((r) => setServers(r.servers)).catch(() => setServers([]))
   }, [token])
   return (
-    <aside className="flex h-dvh w-16 flex-col items-center gap-3 overflow-y-auto overflow-x-hidden border-r border-white/10 bg-[#0f1524] px-2 py-3">
+    <aside className="flex h-dvh w-16 flex-col items-center gap-3 overflow-y-auto overflow-x-hidden border-r border-border bg-background px-2 py-3">
       <Button
         variant="brand"
         size="icon"
@@ -49,14 +49,14 @@ export default function ServerSidebar() {
         </button>
       ))}
       {menu && (
-        <div className="fixed z-[120] rounded border border-white/10 bg-[#0b1220] shadow" style={{ left: menu.x, top: menu.y }} onMouseLeave={() => setMenu(null)}>
-          <button className="block w-40 px-3 py-2 text-left hover:bg-white/5" onClick={() => { setEditOpen(true); setMenu(null); setConfirmAction("rename") }}>Edit name</button>
-          <button className="block w-40 px-3 py-2 text-left hover:bg-white/5" onClick={() => { setConfirmOpen(true); setMenu(null); setConfirmAction("delete") }}>Delete server</button>
+        <div className="fixed z-[120] rounded border border-border bg-popover shadow-md text-popover-foreground" style={{ left: menu.x, top: menu.y }} onMouseLeave={() => setMenu(null)}>
+          <button className="block w-40 px-3 py-2 text-left hover:bg-accent hover:text-accent-foreground text-sm" onClick={() => { setEditOpen(true); setMenu(null); setConfirmAction("rename") }}>Edit name</button>
+          <button className="block w-40 px-3 py-2 text-left hover:bg-accent hover:text-accent-foreground text-sm text-destructive" onClick={() => { setConfirmOpen(true); setMenu(null); setConfirmAction("delete") }}>Delete server</button>
         </div>
       )}
       {editOpen && (
         <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/60 backdrop-blur-sm supports-[backdrop-filter]:bg-black/50 p-4" onClick={() => setEditOpen(false)}>
-          <div className="w-[420px] rounded-lg border border-white/10 bg-[#0b1220] p-4 shadow-xl" onClick={(e) => e.stopPropagation()}>
+          <div className="w-[420px] rounded-lg border border-border bg-card p-4 shadow-xl text-card-foreground" onClick={(e) => e.stopPropagation()}>
             <div className="text-lg font-semibold">Edit server name</div>
             <div className="mt-2"><Input value={editName} onChange={(e) => setEditName(e.target.value)} /></div>
             <div className="mt-6 flex items-center justify-end gap-2">
