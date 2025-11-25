@@ -4,12 +4,20 @@ import { X, LogOut } from "lucide-react"
 import { createPortal } from "react-dom"
 import ConfirmDialog from "./ConfirmDialog"
 import { useNavigate } from "react-router-dom"
-import { useState } from "react"
+import { useState, useEffect } from "react"
+import { useAuth } from "@/hooks/useAuth"
+import { api } from "@/lib/api"
 
 export default function UserSettings({ open, onClose }: { open: boolean; onClose: () => void }) {
   const navigate = useNavigate()
   const [section, setSection] = useState<string>("account")
   const [confirmOpen, setConfirmOpen] = useState(false)
+  const { user } = useAuth()
+  const [name, setName] = useState("")
+  const [saving, setSaving] = useState(false)
+  useEffect(() => {
+    setName(user?.displayName || user?.username || "")
+  }, [user])
   if (!open) return null
   return createPortal(
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm supports-[backdrop-filter]:bg-black/50 p-4" onClick={onClose}>
@@ -43,7 +51,7 @@ export default function UserSettings({ open, onClose }: { open: boolean; onClose
               <div className="space-y-4">
                 <div className="rounded-lg border border-white/10 bg-[#0b1220] p-4">
                   <div className="text-sm">Display name</div>
-                  <Input placeholder="Your name" />
+                  <Input placeholder="Your name" value={name} onChange={(e) => setName(e.target.value)} />
                 </div>
                 <div className="rounded-lg border border-white/10 bg-[#0b1220] p-4">
                   <div className="text-sm">Email</div>
@@ -115,7 +123,18 @@ export default function UserSettings({ open, onClose }: { open: boolean; onClose
           <footer className="border-t border-white/10 p-3">
             <div className="flex items-center justify-end gap-2">
               <Button variant="outline" onClick={onClose}>Close</Button>
-              <Button variant="brand" onClick={onClose}>Save</Button>
+              <Button variant="brand" disabled={saving} onClick={async () => {
+                const token = localStorage.getItem("token") || ""
+                if (!token) { onClose(); return }
+                setSaving(true)
+                try {
+                  const r = await api.updateDisplayName(token, name)
+                  if (r.user) localStorage.setItem("user", JSON.stringify(r.user))
+                } finally {
+                  setSaving(false)
+                  onClose()
+                }
+              }}>Save</Button>
             </div>
           </footer>
         </main>
@@ -126,7 +145,8 @@ export default function UserSettings({ open, onClose }: { open: boolean; onClose
           onCancel={() => setConfirmOpen(false)}
           onConfirm={() => {
             setConfirmOpen(false)
-            localStorage.removeItem('auth')
+            localStorage.removeItem('token')
+            localStorage.removeItem('user')
             onClose()
             navigate('/auth')
           }}

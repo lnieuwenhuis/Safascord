@@ -28,7 +28,7 @@ export default function AppShell({
       ) : (
         <ChatPanel variant={variant} channelName={channelName} guildName={guildName} />
       )}
-      {variant !== "dm" && <UserList />}
+      {variant !== "dm" && <UserList serverId={guildId} />}
     </div>
   )
 }

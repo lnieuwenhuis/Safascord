@@ -1,0 +1,118 @@
+version: "3.9"
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: postgres
+    environment:
+      POSTGRES_USER: app
+      POSTGRES_PASSWORD: app
+      POSTGRES_DB: app
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./db/init:/docker-entrypoint-initdb.d
+    networks: [appnet]
+    ports:
+      - "5432:5432"
+
+  pgbouncer:
+    image: edoburu/pgbouncer
+    container_name: pgbouncer
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USER: app
+      DB_PASSWORD: app
+      DB_NAME: app
+      POOL_MODE: transaction
+      MAX_CLIENT_CONN: 5000
+      DEFAULT_POOL_SIZE: 50
+    depends_on: [postgres]
+    networks: [appnet]
+    ports:
+      - "6432:6432"
+
+  redis:
+    image: redis:7-alpine
+    container_name: redis
+    networks: [appnet]
+    ports:
+      - "6379:6379"
+
+  api:
+    build:
+      context: ../backend
+      dockerfile: Dockerfile
+    container_name: api
+    env_file:
+      - ../.env
+    environment:
+      REDIS_URL: redis://redis:6379
+      PORT: 4000
+      REALTIME_BASE_HTTP: http://realtime:4001
+      REALTIME_BASE_WS: ws://localhost/ws
+      DATABASE_URL: postgres://app:app@postgres:5432/app
+    depends_on: [pgbouncer, redis]
+    networks: [appnet]
+    expose:
+      - "4000"
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.api.rule=PathPrefix(`/api`)"
+      - "traefik.http.routers.api.priority=100"
+      - "traefik.http.services.api.loadbalancer.server.port=4000"
+
+  realtime:
+    build:
+      context: ../realtime
+      dockerfile: Dockerfile
+    container_name: realtime
+    environment:
+      REDIS_URL: redis://redis:6379
+      PORT: 4001
+    depends_on: [redis]
+    networks: [appnet]
+    expose:
+      - "4001"
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.ws.rule=PathPrefix(`/ws`)"
+      - "traefik.http.routers.ws.priority=100"
+      - "traefik.http.services.ws.loadbalancer.server.port=4001"
+
+  frontend:
+    build:
+      context: ../frontend
+      dockerfile: Dockerfile
+    container_name: frontend
+    env_file:
+      - ../.env
+    networks: [appnet]
+    ports:
+      - "5173:5173"
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.frontend.rule=PathPrefix(`/`)"
+      - "traefik.http.routers.frontend.priority=1"
+      - "traefik.http.services.frontend.loadbalancer.server.port=5173"
+
+  traefik:
+    image: traefik:v3.0
+    container_name: traefik
+    env_file:
+      - ../.env
+    command:
+      - "--providers.docker=true"
+      - "--entrypoints.web.address=:80"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    ports:
+      - "80:80"
+    networks: [appnet]
+    depends_on: [frontend, api, realtime]
+
+networks:
+  appnet:
+
+volumes:
+  pgdata:
