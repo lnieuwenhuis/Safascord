@@ -54,8 +54,8 @@ export default function ChatPanel({ variant, channelName, guildName }: { variant
           ))}
         </div>
       </div>
-      <div className="border-t border-white/10 p-3">
-        <div className="flex items-center gap-2">
+      <div className="flex h-16 items-center border-t border-white/10 px-3">
+        <div className="flex w-full items-center gap-2">
           <Input
             placeholder={variant === "guild" ? `Message #${channelName}` : `Message ${channelName}`}
             value={text}
