@@ -158,7 +158,7 @@ export const api = {
       body: formData,
     })
   },
-  updateProfile: async (token: string, data: { bio?: string; bannerColor?: string; bannerUrl?: string; avatarUrl?: string; status?: string }) => {
+  updateProfile: async (token: string, data: { bio?: string | null; bannerColor?: string | null; bannerUrl?: string | null; avatarUrl?: string | null; status?: string | null }) => {
     return request<UserResponse>("/me/profile", {
       method: "PATCH",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },

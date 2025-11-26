@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react"
-import { api, API_BASE, getFullUrl } from "@/lib/api"
+import { api, getFullUrl } from "@/lib/api"
 import { useAuth } from "@/hooks/useAuth"
 import { cn } from "@/lib/utils"
 
@@ -40,7 +40,7 @@ export default function UserList({ serverId }: { serverId?: string }) {
                 const avatarUrl = getFullUrl(displayUser.avatarUrl)
                 
                 const displayName = displayUser.displayName || displayUser.username
-                const status = (displayUser as any).status || "online"
+                const status = (displayUser as UserItem).status || "online"
 
                 return (
                   <li key={u.username} className="flex items-center gap-2 rounded px-2 py-1.5 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground cursor-pointer group opacity-90 hover:opacity-100">

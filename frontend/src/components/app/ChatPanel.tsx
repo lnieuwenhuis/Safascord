@@ -2,7 +2,7 @@ import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Hash, MessageSquare } from "lucide-react"
 import { useEffect, useRef, useState } from "react"
-import { api, API_BASE, getFullUrl } from "@/lib/api"
+import { api, getFullUrl } from "@/lib/api"
 import { useAuth } from "@/hooks/useAuth"
 
 export default function ChatPanel({ variant, channelName, guildName }: { variant: "guild" | "dm"; channelName: string; guildName?: string }) {
@@ -222,7 +222,7 @@ export default function ChatPanel({ variant, channelName, guildName }: { variant
               nodes.push(currentGroup)
             }
 
-            return nodes.map((node, idx) => {
+            return nodes.map((node) => {
               if (node.type === 'date') {
                  return (
                     <div key={`date-${node.id}`} className="relative flex items-center justify-center my-4">

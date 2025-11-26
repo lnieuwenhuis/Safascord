@@ -5,7 +5,7 @@ import { useState, useEffect } from "react"
 import UserSettings from "./UserSettings"
 import { useAuth } from "@/hooks/useAuth"
 import { cn } from "@/lib/utils"
-import { api, API_BASE, getFullUrl } from "@/lib/api"
+import { api, getFullUrl } from "@/lib/api"
 
 // Mock type for status
 type UserStatus = "online" | "idle" | "dnd" | "invisible"
