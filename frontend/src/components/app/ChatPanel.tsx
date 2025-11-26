@@ -25,6 +25,23 @@ export default function ChatPanel({ variant, channelName, guildName }: { variant
     try { return new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) } catch { return "" }
   }
 
+  const isSameDay = (d1: Date, d2: Date) => {
+    return d1.getFullYear() === d2.getFullYear() &&
+      d1.getMonth() === d2.getMonth() &&
+      d1.getDate() === d2.getDate()
+  }
+
+  const formatDateline = (date: Date) => {
+    const today = new Date()
+    const yesterday = new Date(today)
+    yesterday.setDate(yesterday.getDate() - 1)
+
+    if (isSameDay(date, today)) return "Today"
+    if (isSameDay(date, yesterday)) return "Yesterday"
+    
+    return date.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
+  }
+
   useEffect(() => {
     if (!channelName) return
     api.messages(channelName, 50).then((r) => {
@@ -166,14 +183,61 @@ export default function ChatPanel({ variant, channelName, guildName }: { variant
       <div ref={listRef} onScroll={onScroll} className="flex-1 min-h-0 overflow-y-auto p-4">
         <div className="space-y-4">
           {(() => {
-            const groups: { user: string; userAvatar?: string; userId?: string; items: { id: string; user: string; text: string; ts?: string }[] }[] = []
+            type Group = { type: 'group'; user: string; userAvatar?: string; userId?: string; messages: { id: string; text: string; ts?: string }[] }
+            type DateSep = { type: 'date'; date: Date; id: string }
+            const nodes: (Group | DateSep)[] = []
+            
+            let currentGroup: Group | null = null
+            let lastDate: Date | null = null
+
             for (const m of msgs) {
-              const last = groups[groups.length - 1]
-              if (last && last.user === m.user) last.items.push(m)
-              else groups.push({ user: m.user, userAvatar: m.userAvatar, userId: m.userId, items: [m] })
+              const mDate = m.ts ? new Date(m.ts) : new Date()
+              let dateChanged = false
+
+              if (!lastDate || (m.ts && !isSameDay(lastDate, mDate))) {
+                 dateChanged = true
+                 currentGroup = null
+                 nodes.push({ type: 'date', date: mDate, id: m.id })
+                 lastDate = mDate
+              }
+
+              if (currentGroup && currentGroup.user === m.user) {
+                 const lastMsg = currentGroup.messages[currentGroup.messages.length - 1]
+                 const lastTime = lastMsg.ts ? new Date(lastMsg.ts).getTime() : 0
+                 const currTime = mDate.getTime()
+                 
+                 if (currTime - lastTime <= 5 * 60 * 1000 && !dateChanged) {
+                    currentGroup.messages.push({ id: m.id, text: m.text, ts: m.ts })
+                    continue
+                 }
+              }
+
+              currentGroup = {
+                 type: 'group',
+                 user: m.user,
+                 userAvatar: m.userAvatar,
+                 userId: m.userId,
+                 messages: [{ id: m.id, text: m.text, ts: m.ts }]
+              }
+              nodes.push(currentGroup)
             }
-            return groups.map((g) => {
-              const first = g.items[0]
+
+            return nodes.map((node, idx) => {
+              if (node.type === 'date') {
+                 return (
+                    <div key={`date-${node.id}`} className="relative flex items-center justify-center my-4">
+                       <div className="absolute inset-0 flex items-center">
+                          <div className="w-full border-t border-border" />
+                       </div>
+                       <div className="relative bg-background px-2 text-xs text-muted-foreground">
+                          {formatDateline(node.date)}
+                       </div>
+                    </div>
+                 )
+              }
+
+              const g = node as Group
+              const first = g.messages[0]
               
               // Use current user avatar if userId matches
               const isMe = user && (g.userId === user.id || g.user === display)
@@ -182,8 +246,8 @@ export default function ChatPanel({ variant, channelName, guildName }: { variant
                 : getFullUrl(g.userAvatar)
 
               return (
-                <div key={first.id} className="flex items-start gap-3 group hover:bg-muted/50 -mx-4 px-4 py-0.5">
-                  <div className="h-8 w-8 rounded-full bg-primary/20 mt-0.5 overflow-hidden flex-shrink-0">
+                <div key={first.id} className="flex items-start gap-3 group hover:bg-muted/50 -mx-4 px-4 py-0.5 mt-[17px]">
+                  <div className="h-8 w-8 rounded-full bg-primary/20 mt-0.5 overflow-hidden flex-shrink-0 cursor-pointer hover:opacity-80">
                     {avatarUrl ? (
                       <img src={avatarUrl} alt={g.user} className="h-full w-full object-cover block" />
                     ) : (
@@ -199,9 +263,11 @@ export default function ChatPanel({ variant, channelName, guildName }: { variant
                       </div>
                       {first.ts && <div className="text-xs text-muted-foreground">{fmt(first.ts)}</div>}
                     </div>
-                    <div className="text-sm text-foreground whitespace-pre-wrap break-words">{first.text}</div>
-                    {g.items.slice(1).map((it) => (
-                      <div key={it.id} className="mt-0.5 text-sm text-foreground whitespace-pre-wrap break-words">{it.text}</div>
+                    <div className="text-sm text-foreground whitespace-pre-wrap break-words leading-snug">{first.text}</div>
+                    {g.messages.slice(1).map((it) => (
+                      <div key={it.id} className="mt-0.5 text-sm text-foreground whitespace-pre-wrap break-words leading-snug hover:bg-black/5 -mx-4 px-4 py-0.5 relative group/msg">
+                         {it.text}
+                      </div>
                     ))}
                   </div>
                 </div>
