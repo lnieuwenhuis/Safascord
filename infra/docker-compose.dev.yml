@@ -42,7 +42,7 @@ services:
   api:
     build:
       context: ../backend
-      dockerfile: Dockerfile
+      dockerfile: Dockerfile.dev
     container_name: api
     environment:
       REDIS_URL: redis://redis:6379
@@ -54,6 +54,8 @@ services:
     networks: [appnet]
     volumes:
       - uploads_data:/app/uploads
+      - ../backend:/app
+      - /app/node_modules
     expose:
       - "4000"
     labels:
@@ -65,13 +67,16 @@ services:
   realtime:
     build:
       context: ../realtime
-      dockerfile: Dockerfile
+      dockerfile: Dockerfile.dev
     container_name: realtime
     environment:
       REDIS_URL: redis://redis:6379
       PORT: 4001
     depends_on: [redis]
     networks: [appnet]
+    volumes:
+      - ../realtime:/app
+      - /app/node_modules
     expose:
       - "4001"
     labels:
@@ -83,9 +88,12 @@ services:
   frontend:
     build:
       context: ../frontend
-      dockerfile: Dockerfile
+      dockerfile: Dockerfile.dev
     container_name: frontend
     networks: [appnet]
+    volumes:
+      - ../frontend:/app
+      - /app/node_modules
     ports:
       - "5173:5173"
     labels:

@@ -1,0 +1,129 @@
+version: "3.9"
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: postgres
+    restart: always
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-app}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-app}
+      POSTGRES_DB: ${POSTGRES_DB:-app}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./db/init:/docker-entrypoint-initdb.d
+    networks: [appnet]
+    # No ports exposed in production
+
+  pgbouncer:
+    image: edoburu/pgbouncer
+    container_name: pgbouncer
+    restart: always
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USER: ${POSTGRES_USER:-app}
+      DB_PASSWORD: ${POSTGRES_PASSWORD:-app}
+      DB_NAME: ${POSTGRES_DB:-app}
+      POOL_MODE: transaction
+      MAX_CLIENT_CONN: 5000
+      DEFAULT_POOL_SIZE: 50
+    depends_on: [postgres]
+    networks: [appnet]
+    # No ports exposed in production
+
+  redis:
+    image: redis:7-alpine
+    container_name: redis
+    restart: always
+    networks: [appnet]
+    # No ports exposed in production
+
+  api:
+    build:
+      context: ../backend
+      dockerfile: Dockerfile.prod
+    container_name: api
+    restart: always
+    environment:
+      REDIS_URL: redis://redis:6379
+      PORT: 4000
+      REALTIME_BASE_HTTP: http://realtime:4001
+      REALTIME_BASE_WS: ${REALTIME_BASE_WS:-/ws}
+      DATABASE_URL: postgres://${POSTGRES_USER:-app}:${POSTGRES_PASSWORD:-app}@pgbouncer:6432/${POSTGRES_DB:-app}
+    depends_on: [pgbouncer, redis]
+    networks: [appnet]
+    volumes:
+      - uploads_data:/app/uploads
+    expose:
+      - "4000"
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.api.rule=Host(`${DOMAIN_NAME}`) && (PathPrefix(`/api`) || PathPrefix(`/uploads`))"
+      - "traefik.http.routers.api.entrypoints=websecure"
+      - "traefik.http.routers.api.tls.certresolver=myresolver"
+      - "traefik.http.services.api.loadbalancer.server.port=4000"
+
+  realtime:
+    build:
+      context: ../realtime
+      dockerfile: Dockerfile.prod
+    container_name: realtime
+    restart: always
+    environment:
+      REDIS_URL: redis://redis:6379
+      PORT: 4001
+    depends_on: [redis]
+    networks: [appnet]
+    expose:
+      - "4001"
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.ws.rule=Host(`${DOMAIN_NAME}`) && PathPrefix(`/ws`)"
+      - "traefik.http.routers.ws.entrypoints=websecure"
+      - "traefik.http.routers.ws.tls.certresolver=myresolver"
+      - "traefik.http.services.ws.loadbalancer.server.port=4001"
+
+  frontend:
+    build:
+      context: ../frontend
+      dockerfile: Dockerfile.prod
+    container_name: frontend
+    restart: always
+    networks: [appnet]
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.frontend.rule=Host(`${DOMAIN_NAME}`)"
+      - "traefik.http.routers.frontend.entrypoints=websecure"
+      - "traefik.http.routers.frontend.tls.certresolver=myresolver"
+      - "traefik.http.services.frontend.loadbalancer.server.port=80"
+
+  traefik:
+    image: traefik:v3.0
+    container_name: traefik
+    restart: always
+    command:
+      - "--providers.docker=true"
+      - "--entrypoints.web.address=:80"
+      - "--entrypoints.web.http.redirections.entryPoint.to=websecure"
+      - "--entrypoints.web.http.redirections.entryPoint.scheme=https"
+      - "--entrypoints.websecure.address=:443"
+      - "--certificatesresolvers.myresolver.acme.tlschallenge=true"
+      - "--certificatesresolvers.myresolver.acme.email=${ACME_EMAIL}"
+      - "--certificatesresolvers.myresolver.acme.storage=/letsencrypt/acme.json"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - letsencrypt:/letsencrypt
+    ports:
+      - "80:80"
+      - "443:443"
+    networks: [appnet]
+    depends_on: [frontend, api, realtime]
+
+networks:
+  appnet:
+
+volumes:
+  pgdata:
+  uploads_data:
+  letsencrypt:
