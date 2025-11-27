@@ -1,11 +1,21 @@
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
-import { Hash, MessageSquare } from "lucide-react"
+import { Hash, MessageSquare, Menu, Users } from "lucide-react"
 import { useEffect, useRef, useState } from "react"
 import { api, getFullUrl } from "@/lib/api"
 import { useAuth } from "@/hooks/useAuth"
+import { cn } from "@/lib/utils"
 
-export default function ChatPanel({ variant, channelName, guildName }: { variant: "guild" | "dm"; channelName: string; guildName?: string }) {
+interface ChatPanelProps {
+  variant: "guild" | "dm"
+  channelName: string
+  guildName?: string
+  onMobileMenu?: () => void
+  onUserListToggle?: () => void
+  showUserList?: boolean
+}
+
+export default function ChatPanel({ variant, channelName, guildName, onMobileMenu, onUserListToggle, showUserList }: ChatPanelProps) {
   const [msgs, setMsgs] = useState<{ id: string; user: string; userAvatar?: string; userId?: string; text: string; ts?: string }[]>([])
   const [text, setText] = useState("")
   const [typing, setTyping] = useState<Set<string>>(new Set())
@@ -135,10 +145,14 @@ export default function ChatPanel({ variant, channelName, guildName }: { variant
     try {
       if (token) {
         const r = await api.sendMessage(token, channelName, t)
-        const ts = r.message?.ts
+        if ("error" in r) {
+          console.error("Error sending message:", r.error)
+          return
+        }
+        const ts = r.message.ts
         setMsgs((prev) => {
-          if (prev.some((x) => x.id === r.message.id)) return prev
-          return [...prev, { id: r.message.id, user: display, userAvatar: myAvatar || undefined, userId: user?.id, text: t, ts }]
+          if (prev.some((x) => x.id === r.message!.id)) return prev
+          return [...prev, { id: r.message!.id, user: display, userAvatar: myAvatar || undefined, userId: user?.id, text: t, ts }]
         })
       } else {
         setMsgs((prev) => [...prev, { id: String(Date.now()), user: display, text: t }])
@@ -168,6 +182,9 @@ export default function ChatPanel({ variant, channelName, guildName }: { variant
     <div className="min-h-0 flex flex-1 flex-col bg-background text-foreground">
       <div className="flex h-12 items-center justify-between border-b border-border px-4 shadow-sm">
         <div className="flex items-center gap-2">
+          <Button variant="ghost" size="icon" className="md:hidden mr-2 -ml-2 text-muted-foreground" onClick={onMobileMenu}>
+            <Menu className="h-5 w-5" />
+          </Button>
           {variant === "guild" ? (
             <Hash className="h-4 w-4 text-muted-foreground" />
           ) : (
@@ -178,7 +195,18 @@ export default function ChatPanel({ variant, channelName, guildName }: { variant
             {variant === "guild" ? `#${channelName}` : channelName}
           </div>
         </div>
-        <div />
+        <div className="flex items-center">
+          {variant === "guild" && (
+            <Button 
+              variant="ghost" 
+              size="icon" 
+              className={cn("text-muted-foreground", showUserList && "text-foreground bg-accent")} 
+              onClick={onUserListToggle}
+            >
+              <Users className="h-5 w-5" />
+            </Button>
+          )}
+        </div>
       </div>
       <div ref={listRef} onScroll={onScroll} className="flex-1 min-h-0 overflow-y-auto p-4">
         <div className="space-y-4">
@@ -247,7 +275,7 @@ export default function ChatPanel({ variant, channelName, guildName }: { variant
 
               return (
                 <div key={first.id} className="flex items-start gap-3 group hover:bg-muted/50 -mx-4 px-4 py-0.5 mt-[17px]">
-                  <div className="h-8 w-8 rounded-full bg-primary/20 mt-0.5 overflow-hidden flex-shrink-0 cursor-pointer hover:opacity-80">
+                  <div className="h-8 w-8 rounded-full bg-primary/20 mt-0.5 overflow-hidden shrink-0 cursor-pointer hover:opacity-80">
                     {avatarUrl ? (
                       <img src={avatarUrl} alt={g.user} className="h-full w-full object-cover block" />
                     ) : (
@@ -263,9 +291,9 @@ export default function ChatPanel({ variant, channelName, guildName }: { variant
                       </div>
                       {first.ts && <div className="text-xs text-muted-foreground">{fmt(first.ts)}</div>}
                     </div>
-                    <div className="text-sm text-foreground whitespace-pre-wrap break-words leading-snug">{first.text}</div>
+                    <div className="text-sm text-foreground whitespace-pre-wrap wrap-break-words leading-snug">{first.text}</div>
                     {g.messages.slice(1).map((it) => (
-                      <div key={it.id} className="mt-0.5 text-sm text-foreground whitespace-pre-wrap break-words leading-snug hover:bg-black/5 -mx-4 px-4 py-0.5 relative group/msg">
+                      <div key={it.id} className="mt-0.5 text-sm text-foreground whitespace-pre-wrap wrap-break-words leading-snug hover:bg-black/5 -mx-4 px-4 py-0.5 relative group/msg">
                          {it.text}
                       </div>
                     ))}

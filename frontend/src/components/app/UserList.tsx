@@ -5,7 +5,7 @@ import { cn } from "@/lib/utils"
 
 type UserItem = { username: string; displayName: string; avatarUrl?: string; status?: string }
 
-export default function UserList({ serverId }: { serverId?: string }) {
+export default function UserList({ serverId, className }: { serverId?: string, className?: string }) {
   const [groups, setGroups] = useState<{ title: string; users: UserItem[] }[]>([])
   const { user: currentUser } = useAuth()
 
@@ -26,7 +26,7 @@ export default function UserList({ serverId }: { serverId?: string }) {
   }
 
   return (
-    <aside className="hidden w-60 flex-col border-l border-sidebar-border bg-sidebar p-3 text-sidebar-foreground lg:flex">
+    <aside className={cn("w-60 flex-col border-l border-sidebar-border bg-sidebar p-3 text-sidebar-foreground flex", className)}>
       <div className="space-y-6 overflow-y-auto">
         {groups.map((g, idx) => (
           <div key={idx}>

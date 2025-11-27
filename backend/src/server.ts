@@ -428,7 +428,8 @@ app.get("/api/messages", async (req: FastifyRequest<{ Querystring: { channel?: s
     )
     const rows = r.rows as { id: string; user: string | null; user_avatar: string | null; user_id: string | null; text: string; ts: string }[]
     return { messages: rows.reverse().map(m => ({ id: m.id, user: m.user ?? "User", userAvatar: m.user_avatar, userId: m.user_id, text: m.text, ts: m.ts })) }
-  } catch {
+  } catch (e) {
+    console.error("GET /api/messages error:", e)
     const messages = Array.from({ length: 24 }).map((_, i) => ({ id: String(i), user: `User ${i % 5}`, text: `Message ${i + 1}` }))
     return { messages }
   }
@@ -461,8 +462,9 @@ app.post("/api/messages", async (req) => {
       await redis.publish("messages", JSON.stringify({ channel, data: { type: "message", channel, message: m, user: sender, userAvatar: avatar, userId: payload.sub } }))
     } catch {}
     return { message: m }
-  } catch {
-    return { error: "Unauthorized" }
+  } catch (e) {
+    console.error("POST /api/messages error:", e)
+    return { error: `Unauthorized: ${e}` }
   }
 })
 
