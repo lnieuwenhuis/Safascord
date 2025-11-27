@@ -170,21 +170,20 @@ export default function UserCard() {
   const [open, setOpen] = useState(false) // Settings modal
   const [showProfile, setShowProfile] = useState(false) // Profile popup
   const [editProfileOpen, setEditProfileOpen] = useState(false) // Edit Profile Modal
-  const [statusDropdownOpen, setStatusDropdownOpen] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
 
   const { user, updateUser } = useAuth()
   
   // Initialize state from user object
   const [displayName, setDisplayName] = useState((user && (user.displayName || user.username)) || "You")
-  const [bio, setBio] = useState(user?.bio || "Ventauri Setup/Race Engineer\nPSGL F8 S40 (aka washed fraud 💔)...")
+  const [bio, setBio] = useState(user?.bio || "")
   const [bannerColor, setBannerColor] = useState(user?.bannerColor || "#e0ac00")
   const [bannerImage, setBannerImage] = useState<string | null>(getFullUrl(user?.bannerUrl))
   const [avatarImage, setAvatarImage] = useState<string | null>(getFullUrl(user?.avatarUrl))
   const [status, setStatus] = useState<UserStatus>((user?.status as UserStatus) || "online")
   
   // #FIXME: Add the actual premiums tiers and checks
-  const [isPremium, setIsPremium] = useState(true) // Mock "Cosmetic Tier"
+  const [isPremium] = useState(true) // Mock "Cosmetic Tier"
 
   // Temporary state for the Edit Modal
   const [tempDisplayName, setTempDisplayName] = useState(displayName)
@@ -203,7 +202,7 @@ export default function UserCard() {
   useEffect(() => {
     if (user) {
       setDisplayName(user.displayName || user.username || "You")
-      setBio(user.bio || "Ventauri Setup/Race Engineer\nPSGL F8 S40 (aka washed fraud 💔)...")
+      setBio(user.bio || "")
       setBannerColor(user.bannerColor || "#e0ac00")
       setBannerImage(getFullUrl(user.bannerUrl))
       setAvatarImage(getFullUrl(user.avatarUrl))
@@ -284,7 +283,6 @@ export default function UserCard() {
 
   const handleStatusChange = async (s: UserStatus) => {
     setStatus(s)
-    setStatusDropdownOpen(false)
     if (!user) return
     const token = localStorage.getItem("token")
     if (token) {

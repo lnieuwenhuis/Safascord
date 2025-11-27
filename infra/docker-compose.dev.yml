@@ -44,6 +44,8 @@ services:
       context: ../backend
       dockerfile: Dockerfile.dev
     container_name: api
+    env_file:
+      - ../.env
     environment:
       REDIS_URL: redis://redis:6379
       PORT: 4000

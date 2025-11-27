@@ -21,7 +21,7 @@ export type User = {
   avatarUrl?: string | null;
   status?: string | null;
 }
-export type AuthResponse = { token?: string; user?: User; error?: string }
+export type AuthResponse = { token?: string; user?: User; error?: string; isNew?: boolean }
 export type UserResponse = { user?: User; error?: string }
 
 async function request<T>(path: string, opts?: RequestInit): Promise<T> {
@@ -62,6 +62,16 @@ export const api = {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ identifier, password }),
+    })
+  },
+  getAuthUrl: async (redirectUri: string) => {
+    return request<{ url: string; error?: string }>(`/auth/workos-url?redirectUri=${encodeURIComponent(redirectUri)}`)
+  },
+  authWithCode: async (code: string) => {
+    return request<AuthResponse>("/auth/workos-callback", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ code }),
     })
   },
   me: (token: string) => get<UserResponse>("/me", { headers: { Authorization: `Bearer ${token}` } }),
@@ -158,7 +168,7 @@ export const api = {
       body: formData,
     })
   },
-  updateProfile: async (token: string, data: { bio?: string | null; bannerColor?: string | null; bannerUrl?: string | null; avatarUrl?: string | null; status?: string | null }) => {
+  updateProfile: async (token: string, data: { bio?: string | null; bannerColor?: string | null; bannerUrl?: string | null; avatarUrl?: string | null; status?: string | null; username?: string; displayName?: string }) => {
     return request<UserResponse>("/me/profile", {
       method: "PATCH",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },

@@ -45,12 +45,16 @@ services:
       dockerfile: Dockerfile.prod
     container_name: api
     restart: always
+    env_file:
+      - ../.env
     environment:
       REDIS_URL: redis://redis:6379
       PORT: 4000
       REALTIME_BASE_HTTP: http://realtime:4001
       REALTIME_BASE_WS: ${REALTIME_BASE_WS:-/ws}
       DATABASE_URL: postgres://${POSTGRES_USER:-app}:${POSTGRES_PASSWORD:-app}@pgbouncer:6432/${POSTGRES_DB:-app}
+      WORKOS_CLIENT_ID: ${WORKOS_CLIENT_ID}
+      WORKOS_API_KEY: ${WORKOS_API_KEY}
     depends_on: [pgbouncer, redis]
     networks: [appnet]
     volumes:

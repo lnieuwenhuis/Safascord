@@ -12,6 +12,7 @@ import { pipeline } from "stream"
 import util from "util"
 import { fileURLToPath } from 'url'
 import { dirname } from 'path'
+import { WorkOS } from '@workos-inc/node'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = dirname(__filename)
@@ -19,6 +20,9 @@ const pump = util.promisify(pipeline)
 
 const app = Fastify({ logger: true })
 const redis = new Redis(process.env.REDIS_URL || "redis://localhost:6379")
+
+const workos = new WorkOS(process.env.WORKOS_API_KEY)
+const clientId = process.env.WORKOS_CLIENT_ID || ""
 
 async function start() {
   await app.register(cors, {
@@ -58,6 +62,73 @@ app.post("/api/upload", async (req, reply) => {
   await pump(data.file, fs.createWriteStream(filepath))
   const url = `/api/uploads/${name}`
   return { url }
+})
+
+app.get("/api/auth/workos-url", async (req) => {
+  const { redirectUri } = req.query as any
+  if (!redirectUri) return { error: "Missing redirectUri" }
+  const url = workos.userManagement.getAuthorizationUrl({
+    provider: 'authkit',
+    clientId,
+    redirectUri,
+  })
+  return { url }
+})
+
+app.post("/api/auth/workos-callback", async (req) => {
+  const { code } = req.body as any
+  if (!code) return { error: "Missing code" }
+  try {
+    const { user } = await workos.userManagement.authenticateWithCode({
+      clientId,
+      code,
+    })
+    
+    const email = user.email
+    if (!email) return { error: "No email from provider" }
+    
+    let dbUser = await findUserByUsernameOrEmail(email)
+    let isNew = false
+    if (!dbUser) {
+      isNew = true
+      let username = email.split('@')[0]
+      const check = await pool.query("SELECT 1 FROM users WHERE username=$1 LIMIT 1", [username])
+      if (check.rowCount && check.rowCount > 0) {
+        username = `${username}_${Math.random().toString(36).slice(2, 6)}`
+      }
+      
+      const passwordHash = "workos_auth" 
+      const displayName = user.firstName ? `${user.firstName} ${user.lastName || ""}`.trim() : username
+      
+      const r = await pool.query(
+        `INSERT INTO users (username, email, password_hash, display_name, avatar_url)
+         VALUES ($1,$2,$3,$4,$5)
+         RETURNING id::text AS id, username, email, display_name`,
+        [username, email, passwordHash, displayName, user.profilePictureUrl || null]
+      )
+      
+      const u = r.rows[0]
+      try {
+        const sr = await pool.query(`SELECT id FROM servers WHERE name='FST [est. 2025]' LIMIT 1`)
+        const sid = sr.rows[0]?.id as string | undefined
+        if (sid) {
+           const rr = await pool.query(`SELECT id FROM roles WHERE server_id=$1::uuid AND name='Member' LIMIT 1`, [sid])
+           const rid = rr.rows[0]?.id as string | undefined
+           await pool.query(`INSERT INTO server_members (server_id, user_id, role_id) VALUES ($1::uuid,$2::uuid,$3::uuid) ON CONFLICT DO NOTHING`, [sid, u.id, rid || null])
+        }
+      } catch {}
+      
+      dbUser = { ...u, password_hash: passwordHash }
+    }
+    
+    if (!dbUser) return { error: "User not found" }
+    const token = signToken({ id: dbUser.id, username: dbUser.username })
+    return { token, user: { id: dbUser.id, username: dbUser.username, email: dbUser.email, displayName: dbUser.display_name }, isNew }
+    
+  } catch (e) {
+    console.error(e)
+    return { error: "Authentication failed" }
+  }
 })
 
 app.post("/api/auth/register", async (req) => {
@@ -138,11 +209,16 @@ app.get("/api/me", async (req) => {
 app.patch("/api/me/profile", async (req) => {
   const auth = (req.headers as any).authorization as string | undefined
   const body = req.body as any
-  const { bio, bannerColor, bannerUrl, avatarUrl, status } = body || {}
+  const { bio, bannerColor, bannerUrl, avatarUrl, status, username, displayName } = body || {}
   if (!auth) return { error: "Unauthorized" }
   try {
     const payload = jwt.verify(auth.replace(/^Bearer\s+/i, ""), JWT_SECRET) as any
     
+    if (username) {
+       const check = await pool.query("SELECT 1 FROM users WHERE username=$1 AND id!=$2::uuid LIMIT 1", [username, payload.sub])
+       if (check.rowCount && check.rowCount > 0) return { error: "Username taken" }
+    }
+
     const fields: string[] = []
     const values: any[] = []
     let idx = 1
@@ -152,6 +228,8 @@ app.patch("/api/me/profile", async (req) => {
     if (bannerUrl !== undefined) { fields.push(`banner_url=$${idx++}`); values.push(bannerUrl) }
     if (avatarUrl !== undefined) { fields.push(`avatar_url=$${idx++}`); values.push(avatarUrl) }
     if (status !== undefined) { fields.push(`status=$${idx++}`); values.push(status) }
+    if (username !== undefined) { fields.push(`username=$${idx++}`); values.push(username) }
+    if (displayName !== undefined) { fields.push(`display_name=$${idx++}`); values.push(displayName) }
     
     if (fields.length === 0) return { error: "No fields" }
     
