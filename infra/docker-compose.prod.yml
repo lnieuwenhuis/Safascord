@@ -75,7 +75,7 @@ services:
       PORT: 4000
       REALTIME_BASE_HTTP: http://realtime:4001
       REALTIME_BASE_WS: ${REALTIME_BASE_WS:-/ws}
-      DATABASE_URL: postgres://${POSTGRES_USER:-app}:${POSTGRES_PASSWORD:-app}@pgbouncer:6432/${POSTGRES_DB:-app}
+      DATABASE_URL: postgres://${POSTGRES_USER:-app}:${POSTGRES_PASSWORD:-app}@pgbouncer:5432/${POSTGRES_DB:-app}
       WORKOS_CLIENT_ID: ${WORKOS_CLIENT_ID}
       WORKOS_API_KEY: ${WORKOS_API_KEY}
       S3_ENDPOINT: http://minio:9000
