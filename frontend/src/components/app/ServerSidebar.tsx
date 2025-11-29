@@ -7,6 +7,7 @@ import ConfirmDialog from "./ConfirmDialog"
 import CreateServerModal from "./CreateServerModal"
 import EditServerModal from "./EditServerModal"
 import type { Server } from "@/types"
+import { Activity } from "lucide-react"
 
 export default function ServerSidebar() {
   const navigate = useNavigate()
@@ -60,6 +61,14 @@ export default function ServerSidebar() {
           )}
         </button>
       ))}
+      <div className="h-px w-8 bg-white/10" />
+      <button 
+        className="flex h-12 w-12 items-center justify-center rounded-2xl bg-card text-xl hover:bg-card/80 text-green-400"
+        onClick={() => navigate('/stats')}
+        title="System Stats"
+      >
+        <Activity className="w-6 h-6" />
+      </button>
       {menu && (
         <div className="fixed z-[120] rounded border border-border bg-popover shadow-md text-popover-foreground" style={{ left: menu.x, top: menu.y }} onMouseLeave={() => setMenu(null)}>
           {menu.id === "__home__" ? (

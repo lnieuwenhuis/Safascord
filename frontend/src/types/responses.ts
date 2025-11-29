@@ -138,3 +138,49 @@ export interface DMResponse {
   id?: string
   error?: string
 }
+
+export interface StatsSummaryResponse {
+  users: number
+  servers: number
+  messages: number
+  channels: number
+  error?: string
+}
+
+export interface StatsActivityMessagePerHour {
+  hour: string
+  count: string
+}
+
+export interface StatsActivityUsersPerDay {
+  day: string
+  count: string
+}
+
+export interface StatsActivityResponse {
+  messagesPerHour: StatsActivityMessagePerHour[]
+  usersPerDay: StatsActivityUsersPerDay[]
+  error?: string
+}
+
+export interface StatsMetrics {
+  time: string
+  cpu: string
+  memory: string
+  disk: string
+  latency: string
+}
+
+export interface StatsSystemResponse {
+  uptime: number
+  memoryUsage: { rss: number; heapTotal: number; heapUsed: number; external: number }
+  cpuLoad: number[]
+  requestStats: {
+    totalRequests: number
+    totalLatency: number
+    maxLatency: number
+    startTime: number
+    avgLatency: number
+  }
+  error?: string
+}

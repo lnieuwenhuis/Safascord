@@ -131,6 +131,26 @@ export async function runMigrations() {
          ON CONFLICT DO NOTHING
        `)
     }
+
+    // System Metrics for Historical Graphs
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS system_metrics (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        cpu_load REAL,
+        memory_used REAL, -- in MB
+        disk_used REAL,   -- in GB (simplified)
+        avg_latency REAL, -- in ms
+        created_at TIMESTAMPTZ DEFAULT now()
+      );
+    `)
+    // Index for faster time-range queries
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_system_metrics_created_at ON system_metrics(created_at);`)
+    
+    // Fix missing created_at on messages/users if it happens
+    try {
+       await pool.query(`ALTER TABLE messages ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT now();`)
+       await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT now();`)
+    } catch {}
   } catch (e) {
     console.error("Migration failed", e)
   }

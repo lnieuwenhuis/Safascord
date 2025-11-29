@@ -76,15 +76,15 @@ export default function Auth() {
   }
 
   return (
-    <div className="flex h-screen w-screen items-center justify-center bg-[#313338] text-white">
-      <div className="w-full max-w-md rounded-lg bg-[#313338] p-8 shadow-2xl sm:bg-[#2b2d31]">
+    <div className="flex h-screen w-screen items-center justify-center bg-background text-foreground">
+      <div className="w-full max-w-md rounded-lg bg-background p-8 shadow-2xl sm:bg-card border border-border">
         <div className="mb-8 text-center">
           <h1 className="mb-2 text-2xl font-bold">Welcome Back!</h1>
-          <p className="text-[#b5bac1]">We're so excited to see you again!</p>
+          <p className="text-muted-foreground">We're so excited to see you again!</p>
         </div>
         
         {error && (
-          <div className="mb-4 rounded bg-red-500/10 p-2 text-sm text-red-400">
+          <div className="mb-4 rounded bg-destructive/10 p-2 text-sm text-destructive">
             {error}
           </div>
         )}
@@ -92,7 +92,7 @@ export default function Auth() {
         <button
           onClick={handleLogin}
           disabled={isLoading}
-          className="w-full rounded bg-[#5865F2] py-2.5 font-medium text-white transition-colors hover:bg-[#4752c4] disabled:cursor-not-allowed disabled:opacity-70"
+          className="w-full rounded bg-primary py-2.5 font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-70"
         >
           {isLoading ? "Loading..." : "Continue with WorkOS"}
         </button>

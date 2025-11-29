@@ -19,8 +19,26 @@ import { channelRoutes } from "./routes/channels.js"
 import { messageRoutes } from "./routes/messages.js"
 import { uploadRoutes } from "./routes/uploads.js"
 import { miscRoutes } from "./routes/misc.js"
+import { statsRoutes } from "./routes/stats.js"
+import { recordRequest, startMetricsCollector } from "./lib/stats.js"
 
 const app = Fastify({ logger: true })
+
+// Request Latency Tracking
+app.addHook('onRequest', (req, reply, done) => {
+  (req as any).startTime = process.hrtime()
+  done()
+})
+
+app.addHook('onResponse', (req, reply, done) => {
+  const startTime = (req as any).startTime
+  if (startTime) {
+    const diff = process.hrtime(startTime)
+    const latencyMs = (diff[0] * 1000) + (diff[1] / 1e6)
+    recordRequest(latencyMs)
+  }
+  done()
+})
 
 async function start() {
   // Initialize S3 Bucket
@@ -84,6 +102,9 @@ async function start() {
   
   // Run Migrations
   await runMigrations()
+  
+  // Start Metrics Collector
+  startMetricsCollector()
 
   // Register Routes
   try {
@@ -95,6 +116,7 @@ async function start() {
     await app.register(messageRoutes)
     await app.register(uploadRoutes)
     await app.register(miscRoutes)
+    await app.register(statsRoutes)
   } catch (err) {
     console.error("Failed to register routes:", err)
     process.exit(1)

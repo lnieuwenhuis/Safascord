@@ -18,7 +18,10 @@ import type {
   FriendResponse,
   FriendRequestsResponse,
   DMsResponse,
-  DMResponse
+  DMResponse,
+  StatsSummaryResponse,
+  StatsActivityResponse,
+  StatsSystemResponse
 } from "@/types"
 
 export const API_BASE = import.meta.env.VITE_API_BASE || "http://localhost/api"
@@ -297,5 +300,11 @@ export const api = {
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
       body: JSON.stringify({ userId })
     })
-  }
+  },
+  
+  // Stats
+  getStatsSummary: () => get<StatsSummaryResponse>("/stats/summary"),
+  getStatsActivity: () => get<StatsActivityResponse>("/stats/activity"),
+  getStatsSystem: () => get<StatsSystemResponse>("/stats/system"),
+  getStatsMetrics: (range: string) => get<{ metrics: { time: string; cpu: string; memory: string; disk: string; latency: string }[] }>("/stats/metrics?range=" + range)
 }
