@@ -23,6 +23,7 @@ services:
       DB_USER: ${POSTGRES_USER:-app}
       DB_PASSWORD: ${POSTGRES_PASSWORD:-app}
       DB_NAME: ${POSTGRES_DB:-app}
+      AUTH_TYPE: plain
       POOL_MODE: transaction
       MAX_CLIENT_CONN: 5000
       DEFAULT_POOL_SIZE: 50
