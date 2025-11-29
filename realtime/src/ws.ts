@@ -1,11 +1,18 @@
 import { WebSocketServer, WebSocket, RawData } from "ws"
 import http from "http"
-import Redis from "ioredis"
+import Redis, { Cluster } from "ioredis"
 
 type Msg = { type: string; channel?: string; user?: string; userId?: string }
 
 const port = Number(process.env.PORT || 4001)
-const redis = new Redis(process.env.REDIS_URL || "redis://localhost:6379")
+
+// Redis Setup (Standalone or Cluster)
+let redis: Redis | Cluster
+if (process.env.REDIS_CLUSTER_NODES) {
+  redis = new Redis.Cluster(process.env.REDIS_CLUSTER_NODES.split(","))
+} else {
+  redis = new Redis(process.env.REDIS_URL || "redis://localhost:6379")
+}
 
 redis.subscribe("messages", (err) => {
   if (err) console.error("Failed to subscribe to Redis:", err)
@@ -99,11 +106,15 @@ wss.on("connection", (ws: WebSocket) => {
       return
     }
     if (msg.type === "typing.start" && msg.channel && msg.user) {
-      publish(msg.channel, { type: "typing", channel: msg.channel, user: msg.user, userId: msg.userId, active: true })
+      try {
+        redis.publish("messages", JSON.stringify({ channel: msg.channel, data: { type: "typing", channel: msg.channel, user: msg.user, userId: msg.userId, active: true } }))
+      } catch {}
       return
     }
     if (msg.type === "typing.stop" && msg.channel && msg.user) {
-      publish(msg.channel, { type: "typing", channel: msg.channel, user: msg.user, userId: msg.userId, active: false })
+      try {
+        redis.publish("messages", JSON.stringify({ channel: msg.channel, data: { type: "typing", channel: msg.channel, user: msg.user, userId: msg.userId, active: false } }))
+      } catch {}
       return
     }
   })

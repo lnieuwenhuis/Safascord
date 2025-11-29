@@ -30,6 +30,10 @@ services:
       DEFAULT_POOL_SIZE: 50
     depends_on: [postgres]
     networks: [appnet]
+    deploy:
+      replicas: 2
+      restart_policy:
+        condition: on-failure
     # No ports exposed in production
 
   redis:
@@ -37,9 +41,41 @@ services:
     container_name: redis
     restart: always
     networks: [appnet]
+    deploy:
+      placement:
+        constraints: [node.role == manager]
     # No ports exposed in production
 
+  minio:
+    image: minio/minio
+    container_name: minio
+    restart: always
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-admin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-password}
+    volumes:
+      - minio_data:/data
+    networks: [appnet]
+    deploy:
+      placement:
+        constraints: [node.role == manager]
+    expose:
+      - "9000"
+      - "9001"
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.minio.rule=Host(`storage.${DOMAIN_NAME}`)"
+      - "traefik.http.routers.minio.entrypoints=websecure"
+      - "traefik.http.routers.minio.tls.certresolver=myresolver"
+      - "traefik.http.services.minio.loadbalancer.server.port=9000"
+      - "traefik.http.routers.minio-console.rule=Host(`console.${DOMAIN_NAME}`)"
+      - "traefik.http.routers.minio-console.entrypoints=websecure"
+      - "traefik.http.routers.minio-console.tls.certresolver=myresolver"
+      - "traefik.http.services.minio-console.loadbalancer.server.port=9001"
+
   api:
+    image: ${DOCKER_REGISTRY:-myregistry}/api:latest
     build:
       context: ../backend
       dockerfile: Dockerfile.prod
@@ -54,20 +90,29 @@ services:
       DATABASE_URL: postgres://${POSTGRES_USER:-app}:${POSTGRES_PASSWORD:-app}@pgbouncer:6432/${POSTGRES_DB:-app}
       WORKOS_CLIENT_ID: ${WORKOS_CLIENT_ID}
       WORKOS_API_KEY: ${WORKOS_API_KEY}
-    depends_on: [pgbouncer, redis]
+      S3_ENDPOINT: http://minio:9000
+      S3_ACCESS_KEY: ${MINIO_ROOT_USER:-admin}
+      S3_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-password}
+      S3_BUCKET_NAME: uploads
+      S3_PUBLIC_URL: https://storage.${DOMAIN_NAME}
+    depends_on: [pgbouncer, redis, minio]
     networks: [appnet]
-    volumes:
-      - uploads_data:/app/uploads
+    deploy:
+      replicas: 3
+      update_config:
+        parallelism: 1
+        delay: 10s
     expose:
       - "4000"
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.api.rule=Host(`${DOMAIN_NAME}`) && (PathPrefix(`/api`) || PathPrefix(`/uploads`))"
+      - "traefik.http.routers.api.rule=Host(`${DOMAIN_NAME}`) && PathPrefix(`/api`)"
       - "traefik.http.routers.api.entrypoints=websecure"
       - "traefik.http.routers.api.tls.certresolver=myresolver"
       - "traefik.http.services.api.loadbalancer.server.port=4000"
 
   realtime:
+    image: ${DOCKER_REGISTRY:-myregistry}/realtime:latest
     build:
       context: ../realtime
       dockerfile: Dockerfile.prod
@@ -77,6 +122,11 @@ services:
       PORT: 4001
     depends_on: [redis]
     networks: [appnet]
+    deploy:
+      replicas: 3
+      update_config:
+        parallelism: 1
+        delay: 10s
     expose:
       - "4001"
     labels:
@@ -87,12 +137,15 @@ services:
       - "traefik.http.services.ws.loadbalancer.server.port=4001"
 
   frontend:
+    image: ${DOCKER_REGISTRY:-myregistry}/frontend:latest
     build:
       context: ../frontend
       dockerfile: Dockerfile.prod
     container_name: frontend
     restart: always
     networks: [appnet]
+    deploy:
+      replicas: 2
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.frontend.rule=Host(`${DOMAIN_NAME}`)"
@@ -106,6 +159,8 @@ services:
     restart: always
     command:
       - "--providers.docker=true"
+      - "--providers.docker.swarmMode=true"
+      - "--providers.docker.exposedbydefault=false"
       - "--entrypoints.web.address=:80"
       - "--entrypoints.web.http.redirections.entryPoint.to=websecure"
       - "--entrypoints.web.http.redirections.entryPoint.scheme=https"
@@ -120,7 +175,11 @@ services:
       - "80:80"
       - "443:443"
     networks: [appnet]
-    depends_on: [frontend, api, realtime]
+    deploy:
+      mode: global
+      placement:
+        constraints: [node.role == manager]
+    depends_on: [frontend, api, realtime, minio]
 
 networks:
   appnet:
@@ -129,3 +188,4 @@ volumes:
   pgdata:
   uploads_data:
   letsencrypt:
+  minio_data:

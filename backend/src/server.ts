@@ -1,40 +1,115 @@
 import Fastify, { FastifyRequest } from "fastify"
 import cors from "@fastify/cors"
-import fastifyStatic from "@fastify/static"
 import fastifyMultipart from "@fastify/multipart"
 import { Pool } from "pg"
 import bcrypt from "bcryptjs"
 import jwt from "jsonwebtoken"
-import Redis from "ioredis"
+import Redis, { Cluster } from "ioredis"
 import path from "path"
-import fs from "fs"
 import { pipeline } from "stream"
 import util from "util"
 import { fileURLToPath } from 'url'
 import { dirname } from 'path'
 import { WorkOS } from '@workos-inc/node'
+import { 
+  S3Client, 
+  PutObjectCommand, 
+  CreateBucketCommand, 
+  PutBucketLifecycleConfigurationCommand, 
+  PutBucketPolicyCommand, 
+  HeadBucketCommand 
+} from "@aws-sdk/client-s3"
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = dirname(__filename)
 const pump = util.promisify(pipeline)
 
+const BUCKET_NAME = process.env.S3_BUCKET_NAME || "uploads"
+const STORAGE_PUBLIC_URL = process.env.S3_PUBLIC_URL || "http://localhost:9000"
+
+const s3 = new S3Client({
+  region: "us-east-1", // MinIO defaults to this
+  endpoint: process.env.S3_ENDPOINT || "http://minio:9000",
+  credentials: {
+    accessKeyId: process.env.S3_ACCESS_KEY || "admin",
+    secretAccessKey: process.env.S3_SECRET_KEY || "password",
+  },
+  forcePathStyle: true // Required for MinIO
+})
+
 const app = Fastify({ logger: true })
-const redis = new Redis(process.env.REDIS_URL || "redis://localhost:6379")
+
+// Redis Setup (Standalone or Cluster)
+let redis: Redis | Cluster
+if (process.env.REDIS_CLUSTER_NODES) {
+  // Expect comma-separated list: "redis-1:6379,redis-2:6379,..."
+  redis = new Redis.Cluster(process.env.REDIS_CLUSTER_NODES.split(","))
+} else {
+  redis = new Redis(process.env.REDIS_URL || "redis://localhost:6379")
+}
 
 const workos = new WorkOS(process.env.WORKOS_API_KEY)
 const clientId = process.env.WORKOS_CLIENT_ID || ""
 
 async function start() {
+  // Initialize S3 Bucket
+  try {
+    await s3.send(new HeadBucketCommand({ Bucket: BUCKET_NAME }))
+  } catch (e) {
+    console.log("Creating bucket:", BUCKET_NAME)
+    try {
+      await s3.send(new CreateBucketCommand({ Bucket: BUCKET_NAME }))
+    } catch (err) {
+      console.error("Failed to create bucket:", err)
+    }
+  }
+
+  // Set Lifecycle Policy (6 months retention)
+  try {
+    await s3.send(new PutBucketLifecycleConfigurationCommand({
+      Bucket: BUCKET_NAME,
+      LifecycleConfiguration: {
+        Rules: [
+          {
+            ID: "DeleteOldFiles",
+            Status: "Enabled",
+            Filter: { Prefix: "" },
+            Expiration: { Days: 180 }
+          }
+        ]
+      }
+    }))
+  } catch (e) {
+    console.error("Failed to set lifecycle policy:", e)
+  }
+
+  // Set Public Policy
+  try {
+    const policy = {
+      Version: "2012-10-17",
+      Statement: [
+        {
+          Sid: "PublicReadGetObject",
+          Effect: "Allow",
+          Principal: "*",
+          Action: "s3:GetObject",
+          Resource: `arn:aws:s3:::${BUCKET_NAME}/*`
+        }
+      ]
+    }
+    await s3.send(new PutBucketPolicyCommand({
+      Bucket: BUCKET_NAME,
+      Policy: JSON.stringify(policy)
+    }))
+  } catch (e) {
+    console.error("Failed to set bucket policy:", e)
+  }
+
   await app.register(cors, {
     origin: (origin, cb) => cb(null, true),
     credentials: true,
   })
   await app.register(fastifyMultipart)
-  await app.register(fastifyStatic, {
-    root: path.join(__dirname, '../uploads'),
-    prefix: '/api/uploads/',
-  })
-
   // Migrations
   try {
     await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS bio TEXT;`)
@@ -600,14 +675,24 @@ app.post("/api/upload", async (req, reply) => {
   if (!data) return { error: "No file" }
   const ext = path.extname(data.filename)
   const name = `${Date.now()}-${Math.random().toString(36).slice(2)}${ext}`
-  const uploadsDir = path.join(__dirname, '../uploads')
-  if (!fs.existsSync(uploadsDir)) {
-    fs.mkdirSync(uploadsDir, { recursive: true })
+  
+  // Limit 50MB
+  const buffer = await data.toBuffer()
+  if (buffer.length > 50 * 1024 * 1024) return { error: "File too large (max 50MB)" }
+
+  try {
+    await s3.send(new PutObjectCommand({
+      Bucket: BUCKET_NAME,
+      Key: name,
+      Body: buffer,
+      ContentType: data.mimetype
+    }))
+    const url = `${STORAGE_PUBLIC_URL}/${BUCKET_NAME}/${name}`
+    return { url }
+  } catch (e) {
+    console.error("Upload failed:", e)
+    return { error: "Upload failed" }
   }
-  const filepath = path.join(uploadsDir, name)
-  await pump(data.file, fs.createWriteStream(filepath))
-  const url = `/api/uploads/${name}`
-  return { url }
 })
 
 app.get("/api/auth/workos-url", async (req) => {

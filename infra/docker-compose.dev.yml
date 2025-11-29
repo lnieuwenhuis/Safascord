@@ -39,6 +39,24 @@ services:
     ports:
       - "6379:6379"
 
+  minio:
+    image: minio/minio
+    container_name: minio
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: admin
+      MINIO_ROOT_PASSWORD: password
+    volumes:
+      - minio_data:/data
+    networks: [appnet]
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.minio.rule=Host(`minio.localhost`)"
+      - "traefik.http.services.minio.loadbalancer.server.port=9000"
+
   api:
     build:
       context: ../backend
@@ -52,7 +70,12 @@ services:
       REALTIME_BASE_HTTP: http://realtime:4001
       REALTIME_BASE_WS: ws://localhost/ws
       DATABASE_URL: postgres://app:app@postgres:5432/app
-    depends_on: [pgbouncer, redis]
+      S3_ENDPOINT: http://minio:9000
+      S3_ACCESS_KEY: admin
+      S3_SECRET_KEY: password
+      S3_BUCKET_NAME: uploads
+      S3_PUBLIC_URL: http://localhost:9000
+    depends_on: [pgbouncer, redis, minio]
     networks: [appnet]
     volumes:
       - uploads_data:/app/uploads
@@ -62,7 +85,7 @@ services:
       - "4000"
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.api.rule=PathPrefix(`/api`) || PathPrefix(`/uploads`)"
+      - "traefik.http.routers.api.rule=PathPrefix(`/api`)"
       - "traefik.http.routers.api.priority=100"
       - "traefik.http.services.api.loadbalancer.server.port=4000"
 
@@ -115,7 +138,7 @@ services:
     ports:
       - "80:80"
     networks: [appnet]
-    depends_on: [frontend, api, realtime]
+    depends_on: [frontend, api, realtime, minio]
 
 networks:
   appnet:
@@ -123,3 +146,4 @@ networks:
 volumes:
   pgdata:
   uploads_data:
+  minio_data:
