@@ -24,8 +24,8 @@ import type {
   StatsSystemResponse
 } from "@/types"
 
-export const API_BASE = import.meta.env.VITE_API_BASE || "http://localhost/api"
-export const WS_BASE = import.meta.env.VITE_WS_BASE || "ws://localhost/ws"
+export const API_BASE = import.meta.env.VITE_API_BASE || (import.meta.env.DEV ? "http://localhost/api" : "/api")
+export const WS_BASE = import.meta.env.VITE_WS_BASE || (import.meta.env.DEV ? "ws://localhost/ws" : `${window.location.protocol === "https:" ? "wss://" : "ws://"}${window.location.host}/ws`)
 
 export function getFullUrl(url: string | null | undefined): string | null {
   if (!url) return null
