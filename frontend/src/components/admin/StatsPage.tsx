@@ -56,7 +56,10 @@ export function StatsPage() {
 
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault()
-    if (username === "Safasfly" && password === "LarsNieuwenhuisOostergo2004!") {
+    const adminUser = import.meta.env.VITE_ADMIN_USERNAME
+    const adminPass = import.meta.env.VITE_ADMIN_PASSWORD
+    
+    if (username === adminUser && password === adminPass) {
       setIsAuthenticated(true)
       sessionStorage.setItem("admin_auth", "true")
       setError("")
