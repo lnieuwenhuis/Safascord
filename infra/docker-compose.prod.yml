@@ -43,7 +43,6 @@ services:
     build:
       context: ../backend
       dockerfile: Dockerfile.prod
-    container_name: api
     restart: always
     env_file:
       - ../.env
@@ -72,7 +71,6 @@ services:
     build:
       context: ../realtime
       dockerfile: Dockerfile.prod
-    container_name: realtime
     restart: always
     environment:
       REDIS_URL: redis://redis:6379

@@ -1,6 +1,6 @@
 import type { 
   AuthResponse, 
-  UserResponse,  
+  UserResponse, 
   ServersResponse, 
   ChannelsResponse, 
   UsersListResponse, 
@@ -48,15 +48,15 @@ async function get<T>(path: string, opts?: RequestInit): Promise<T> {
 
 export const api = {
   servers: (token?: string) => get<ServersResponse>("/servers", token ? { headers: { Authorization: `Bearer ${token}` } } : undefined),
-  channels: (serverId?: string) => get<ChannelsResponse>(`/channels${serverId ? `?serverId=${serverId}` : ""}`),
+  channels: (serverId?: string, token?: string) => get<ChannelsResponse>(`/channels${serverId ? `?serverId=${serverId}` : ""}`, token ? { headers: { Authorization: `Bearer ${token}` } } : undefined),
   users: (serverId?: string) => get<UsersListResponse>(`/users${serverId ? `?serverId=${serverId}` : ""}`),
-  messages: (channel: string, limit = 50, before?: string) => get<MessagesResponse>(`/messages?channel=${encodeURIComponent(channel)}&limit=${limit}${before ? `&before=${encodeURIComponent(before)}` : ""}`),
+  messages: (token: string, channel: string, limit = 50, before?: string, serverId?: string) => get<MessagesResponse>(`/messages?channel=${encodeURIComponent(channel)}&limit=${limit}${before ? `&before=${encodeURIComponent(before)}` : ""}${serverId ? `&serverId=${serverId}` : ""}`, { headers: { Authorization: `Bearer ${token}` } }),
   socketInfo: (channel: string) => get<SocketInfoResponse>(`/socket-info?channel=${encodeURIComponent(channel)}`),
-  sendMessage: async (token: string, channel: string, content: string) => {
+  sendMessage: async (token: string, channel: string, content: string, serverId?: string) => {
     return request<MessageResponse>("/messages", {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ channel, content }),
+      body: JSON.stringify({ channel, content, serverId }),
     })
   },
   register: async (username: string, email: string, password: string, displayName?: string) => {
@@ -186,18 +186,23 @@ export const api = {
       headers: { Authorization: `Bearer ${token}` }
     })
   },
-  createChannel: async (token: string, serverId: string, name: string, category: string) => {
+  createChannel: async (token: string, serverId: string, name: string, category: string, permissions?: { roleId: string; canView: boolean; canSendMessages: boolean }[]) => {
     return request<ChannelResponse>("/channels", {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ serverId, name, category }),
+      body: JSON.stringify({ serverId, name, category, permissions }),
     })
   },
-  renameChannel: async (token: string, id: string, name: string) => {
+  renameChannel: async (token: string, id: string, name: string, permissions?: { roleId: string; canView: boolean; canSendMessages: boolean }[]) => {
     return request<ChannelResponse>(`/channels/${id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ name }),
+      body: JSON.stringify({ name, permissions }),
+    })
+  },
+  getChannelPermissions: async (token: string, id: string) => {
+    return request<{ permissions: { roleId: string; canView: boolean; canSendMessages: boolean }[] }>(`/channels/${id}/permissions`, {
+      headers: { Authorization: `Bearer ${token}` }
     })
   },
   deleteChannel: async (token: string, id: string) => {

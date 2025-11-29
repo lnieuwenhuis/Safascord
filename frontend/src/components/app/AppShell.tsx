@@ -83,6 +83,7 @@ export default function AppShell({
             variant={variant} 
             channelName={channelName} 
             guildName={guildName}
+            guildId={guildId}
             onMobileMenu={() => setMobileMenuOpen(true)}
             onUserListToggle={handleUserListToggle}
             showUserList={isMobile ? mobileUserListOpen : showUserList}

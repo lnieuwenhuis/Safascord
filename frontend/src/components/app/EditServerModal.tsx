@@ -37,8 +37,41 @@ export default function EditServerModal({
   initialData: Server | null
 }) {
   const [activeTab, setActiveTab] = useState("overview")
+  
+  // Lifted state from ServerOverview
+  const [name, setName] = useState("")
+  const [description, setDescription] = useState("")
+  const [iconUrl, setIconUrl] = useState("")
+  const [bannerUrl, setBannerUrl] = useState("")
+  const [loading, setLoading] = useState(false)
+
+  useEffect(() => {
+    if (initialData) {
+      setName(initialData.name)
+      setDescription(initialData.description || "")
+      setIconUrl(initialData.iconUrl || "")
+      setBannerUrl(initialData.bannerUrl || "")
+    }
+  }, [initialData])
 
   if (!open || !initialData) return null
+
+  const handleSave = async () => {
+    const token = localStorage.getItem("token")
+    if (!token || !name) return
+    try {
+      setLoading(true)
+      const res = await api.renameServer(token, initialData.id, name, description, iconUrl, bannerUrl)
+      if (res.server) {
+        onUpdated(res.server)
+        onClose() 
+      }
+    } catch (e) {
+      console.error(e)
+    } finally {
+      setLoading(false)
+    }
+  }
 
   return createPortal(
     <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/80 backdrop-blur-sm supports-[backdrop-filter]:bg-black/50 p-4" onClick={onClose}>
@@ -78,9 +111,22 @@ export default function EditServerModal({
         
         {/* Content */}
         <div className="flex-1 overflow-hidden">
-           {activeTab === "overview" && <ServerOverview server={initialData} onUpdated={onUpdated} onClose={onClose} />}
+           {activeTab === "overview" && (
+             <ServerOverview 
+               name={name} setName={setName}
+               description={description} setDescription={setDescription}
+               iconUrl={iconUrl} setIconUrl={setIconUrl}
+               bannerUrl={bannerUrl} setBannerUrl={setBannerUrl}
+             />
+           )}
            {activeTab === "roles" && <ServerRoles serverId={initialData.id} />}
            {activeTab === "members" && <ServerMembers serverId={initialData.id} />}
+        </div>
+
+        {/* Footer */}
+        <div className="flex items-center justify-end gap-4 border-t border-border bg-muted/10 p-4">
+           <Button variant="ghost" onClick={onClose}>Cancel</Button>
+           <Button onClick={handleSave} disabled={!name || loading}>Save Changes</Button>
         </div>
       </div>
     </div>,
@@ -92,6 +138,7 @@ function ServerMembers({ serverId }: { serverId: string }) {
   const [members, setMembers] = useState<{ id: string; username: string; discriminator: string; displayName: string; avatarUrl: string; roles: string[]; muted: boolean }[]>([])
   const [roles, setRoles] = useState<Role[]>([])
   const [search, setSearch] = useState("")
+  const [openDropdownId, setOpenDropdownId] = useState<string | null>(null)
 
   useEffect(() => {
     loadMembers()
@@ -221,25 +268,36 @@ function ServerMembers({ serverId }: { serverId: string }) {
                </div>
                
                <div className="flex items-center gap-2">
-                  <div className="dropdown relative group">
-                     <Button variant="outline" size="sm">Roles</Button>
-                     <div className="absolute right-0 top-full mt-1 w-48 rounded-md border border-border bg-popover p-1 shadow-md hidden group-hover:block z-50">
-                        {roles.map(r => (
-                           <div 
-                             key={r.id} 
-                             className="flex items-center gap-2 px-2 py-1.5 hover:bg-accent rounded cursor-pointer"
-                             onClick={() => handleToggleRole(m.id, r.id, m.roles)}
-                           >
-                              <div className={`h-4 w-4 border rounded flex items-center justify-center ${m.roles.includes(r.id) ? "bg-primary border-primary text-primary-foreground" : "border-muted-foreground"}`}>
-                                 {m.roles.includes(r.id) && <div className="h-2 w-2 bg-current rounded-full" />}
-                              </div>
-                              <div className="h-2 w-2 rounded-full" style={{ backgroundColor: r.color }} />
-                              <span className="text-sm">{r.name}</span>
-                           </div>
-                        ))}
-                     </div>
-                          </div>
-                          <Button variant={m.muted ? "secondary" : "outline"} size="sm" onClick={() => handleMute(m.id, m.muted)}>
+                  <div className="relative">
+                     <Button 
+                        variant="outline" 
+                        size="sm"
+                        onClick={() => setOpenDropdownId(openDropdownId === m.id ? null : m.id)}
+                     >
+                        Roles
+                     </Button>
+                     {openDropdownId === m.id && (
+                       <>
+                         <div className="fixed inset-0 z-40" onClick={() => setOpenDropdownId(null)} />
+                         <div className="absolute right-0 top-full mt-1 w-48 rounded-md border border-border bg-popover p-1 shadow-md z-50">
+                            {roles.map(r => (
+                               <div 
+                                 key={r.id} 
+                                 className="flex items-center gap-2 px-2 py-1.5 hover:bg-accent rounded cursor-pointer"
+                                 onClick={() => handleToggleRole(m.id, r.id, m.roles)}
+                               >
+                                  <div className={`h-4 w-4 border rounded flex items-center justify-center ${m.roles.includes(r.id) ? "bg-primary border-primary text-primary-foreground" : "border-muted-foreground"}`}>
+                                     {m.roles.includes(r.id) && <div className="h-2 w-2 bg-current rounded-full" />}
+                                  </div>
+                                  <div className="h-2 w-2 rounded-full" style={{ backgroundColor: r.color }} />
+                                  <span className="text-sm">{r.name}</span>
+                               </div>
+                            ))}
+                         </div>
+                       </>
+                     )}
+                  </div>
+                  <Button variant={m.muted ? "secondary" : "outline"} size="sm" onClick={() => handleMute(m.id, m.muted)}>
                              {m.muted ? "Unmute" : "Mute"}
                           </Button>
                           <Button variant="destructive" size="sm" onClick={() => handleKick(m.id)}>
@@ -256,15 +314,17 @@ function ServerMembers({ serverId }: { serverId: string }) {
   )
 }
 
-function ServerOverview({ server, onUpdated, onClose }: { 
-  server: Server; 
-  onUpdated: (server: Server) => void; 
-  onClose: () => void 
+function ServerOverview({ 
+  name, setName, 
+  description, setDescription, 
+  iconUrl, setIconUrl, 
+  bannerUrl, setBannerUrl 
+}: { 
+  name: string; setName: (v: string) => void;
+  description: string; setDescription: (v: string) => void;
+  iconUrl: string; setIconUrl: (v: string) => void;
+  bannerUrl: string; setBannerUrl: (v: string) => void;
 }) {
-  const [name, setName] = useState(server.name || "")
-  const [description, setDescription] = useState(server.description || "")
-  const [iconUrl, setIconUrl] = useState(server.iconUrl || "")
-  const [bannerUrl, setBannerUrl] = useState(server.bannerUrl || "")
   const [loading, setLoading] = useState(false)
   
   const iconInputRef = useRef<HTMLInputElement>(null)
@@ -287,22 +347,7 @@ function ServerOverview({ server, onUpdated, onClose }: {
     }
   }
 
-  const handleSubmit = async () => {
-    const token = localStorage.getItem("token")
-    if (!token || !name) return
-    try {
-      setLoading(true)
-      const res = await api.renameServer(token, server.id, name, description, iconUrl, bannerUrl)
-      if (res.server) {
-        onUpdated(res.server)
-        onClose() 
-      }
-    } catch (e) {
-      console.error(e)
-    } finally {
-      setLoading(false)
-    }
-  }
+  if (loading) return null
 
   return (
     <div className="h-full overflow-y-auto p-6">
@@ -377,11 +422,6 @@ function ServerOverview({ server, onUpdated, onClose }: {
                <Input id="description" value={description} onChange={(e) => setDescription(e.target.value)} />
              </div>
           </div>
-        </div>
-
-        <div className="mt-8 flex justify-end gap-4">
-          <Button variant="ghost" onClick={onClose}>Cancel</Button>
-          <Button onClick={handleSubmit} disabled={!name || loading}>Save Changes</Button>
         </div>
     </div>
   )

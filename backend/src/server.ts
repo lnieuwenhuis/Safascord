@@ -94,6 +94,16 @@ async function start() {
       );
     `)
 
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS channel_permissions (
+        channel_id UUID NOT NULL REFERENCES channels(id) ON DELETE CASCADE,
+        role_id UUID NOT NULL REFERENCES roles(id) ON DELETE CASCADE,
+        can_view BOOLEAN DEFAULT TRUE,
+        can_send_messages BOOLEAN DEFAULT TRUE,
+        PRIMARY KEY (channel_id, role_id)
+      );
+    `)
+
     // Create friendships table
     await pool.query(`
       CREATE TABLE IF NOT EXISTS friendships (
@@ -545,27 +555,7 @@ app.post("/api/servers/:serverId/members/:userId/ban", async (req) => {
   }
 })
 
-// Mute Member
-app.post("/api/servers/:serverId/members/:userId/mute", async (req) => {
-  const auth = (req.headers as any).authorization as string | undefined
-  const { serverId, userId } = (req.params as any)
-  const { muted } = (req.body as any)
-  
-  if (!auth || !serverId || !userId) return { error: "Bad request" }
-  
-  try {
-    const payload = jwt.verify(auth.replace(/^Bearer\s+/i, ""), JWT_SECRET) as any
-    
-    const server = await pool.query(`SELECT owner_id FROM servers WHERE id=$1::uuid`, [serverId])
-    if (server.rows[0].owner_id !== payload.sub) return { error: "Unauthorized" }
-    
-    await pool.query(`UPDATE server_members SET muted=$3 WHERE server_id=$1::uuid AND user_id=$2::uuid`, [serverId, userId, !!muted])
-    
-    return { ok: true }
-  } catch (e) {
-    return { error: "Server error" }
-  }
-})
+
 
 app.get("/api/health", async () => ({ ok: true }))
 
@@ -1273,19 +1263,42 @@ app.post("/api/servers/:id/bans", async (req) => {
 app.post("/api/channels", async (req) => {
   const auth = (req.headers as any).authorization as string | undefined
   const body = req.body as any
-  const { serverId, name, category } = body || {}
+  const { serverId, name, category, permissions } = body || {}
   if (!auth || !serverId || !name || !category) return { error: "Bad request" }
   try {
     const payload = jwt.verify(auth.replace(/^Bearer\s+/i, ""), JWT_SECRET) as any
     const allowed = await checkPermission(payload.sub, serverId, 'can_manage_channels')
     if (!allowed) return { error: "Missing permissions" }
-    const r = await pool.query(
-      `INSERT INTO channels (server_id, name, category) VALUES ($1::uuid,$2::text,$3::text)
-       RETURNING id::text AS id, name, category`,
-      [serverId, name, category]
-    )
-    return { channel: r.rows[0] as { id: string; name: string; category: string } }
-  } catch {
+    
+    const client = await pool.connect()
+    try {
+       await client.query('BEGIN')
+       const r = await client.query(
+         `INSERT INTO channels (server_id, name, category) VALUES ($1::uuid,$2::text,$3::text)
+          RETURNING id::text AS id, name, category`,
+         [serverId, name, category]
+       )
+       const channel = r.rows[0] as { id: string; name: string; category: string }
+       
+       if (Array.isArray(permissions)) {
+         for (const p of permissions) {
+           await client.query(
+             `INSERT INTO channel_permissions (channel_id, role_id, can_view, can_send_messages) VALUES ($1::uuid, $2::uuid, $3::boolean, $4::boolean)`,
+             [channel.id, p.roleId, !!p.canView, !!p.canSendMessages]
+           )
+         }
+       }
+       
+       await client.query('COMMIT')
+       return { channel }
+    } catch (e) {
+       await client.query('ROLLBACK')
+       throw e
+    } finally {
+       client.release()
+    }
+  } catch (e) {
+    console.error(e)
     return { error: "Unauthorized" }
   }
 })
@@ -1294,8 +1307,8 @@ app.patch("/api/channels/:id", async (req) => {
   const auth = (req.headers as any).authorization as string | undefined
   const body = req.body as any
   const id = (req.params as any).id as string
-  const { name } = body || {}
-  if (!auth || !id || !name) return { error: "Bad request" }
+  const { name, permissions } = body || {}
+  if (!auth || !id) return { error: "Bad request" }
   try {
     const payload = jwt.verify(auth.replace(/^Bearer\s+/i, ""), JWT_SECRET) as any
     const c = await pool.query('SELECT server_id FROM channels WHERE id=$1::uuid', [id])
@@ -1303,8 +1316,52 @@ app.patch("/api/channels/:id", async (req) => {
     if (!serverId) return { error: "Not found" }
     const allowed = await checkPermission(payload.sub, serverId, 'can_manage_channels')
     if (!allowed) return { error: "Missing permissions" }
-    const r = await pool.query(`UPDATE channels SET name=$2 WHERE id=$1::uuid RETURNING id::text AS id, name`, [id, name])
-    return { channel: r.rows[0] as { id: string; name: string } }
+    
+    const client = await pool.connect()
+    try {
+       await client.query('BEGIN')
+       
+       if (name) {
+          await client.query(`UPDATE channels SET name=$2 WHERE id=$1::uuid`, [id, name])
+       }
+       
+       if (Array.isArray(permissions)) {
+          // Replace all permissions
+          await client.query(`DELETE FROM channel_permissions WHERE channel_id=$1::uuid`, [id])
+          for (const p of permissions) {
+             await client.query(
+               `INSERT INTO channel_permissions (channel_id, role_id, can_view, can_send_messages) VALUES ($1::uuid, $2::uuid, $3::boolean, $4::boolean)`,
+               [id, p.roleId, !!p.canView, !!p.canSendMessages]
+             )
+          }
+       }
+       
+       const r = await client.query(`SELECT id::text AS id, name FROM channels WHERE id=$1::uuid`, [id])
+       await client.query('COMMIT')
+       return { channel: r.rows[0] }
+    } catch (e) {
+       await client.query('ROLLBACK')
+       throw e
+    } finally {
+       client.release()
+    }
+  } catch {
+    return { error: "Unauthorized" }
+  }
+})
+
+app.get("/api/channels/:id/permissions", async (req) => {
+  const auth = (req.headers as any).authorization as string | undefined
+  const id = (req.params as any).id as string
+  if (!auth || !id) return { error: "Bad request" }
+  try {
+    jwt.verify(auth.replace(/^Bearer\s+/i, ""), JWT_SECRET)
+    const r = await pool.query(
+      `SELECT role_id::text AS "roleId", can_view AS "canView", can_send_messages AS "canSendMessages"
+       FROM channel_permissions WHERE channel_id=$1::uuid`,
+      [id]
+    )
+    return { permissions: r.rows }
   } catch {
     return { error: "Unauthorized" }
   }
@@ -1329,29 +1386,154 @@ app.delete("/api/channels/:id", async (req) => {
 })
 
 app.get("/api/channels", async (req: FastifyRequest<{ Querystring: { serverId?: string } }>) => {
+  const auth = (req.headers as any).authorization as string | undefined
   try {
     const serverId = req.query.serverId || null
-    const ch = await pool.query(
-      `SELECT name, category FROM channels WHERE ($1::uuid IS NULL OR server_id=$1::uuid) ORDER BY category, name`,
-      [serverId]
-    )
+    let userId: string | null = null
+    
+    if (auth) {
+       try {
+         const payload = jwt.verify(auth.replace(/^Bearer\s+/i, ""), JWT_SECRET) as any
+         userId = payload.sub
+       } catch {}
+    }
+
+    // If no user, return public only? Or just empty? 
+    // Assuming authorized context for now.
+    
+    let query = `SELECT c.id, c.name, c.category, c.type, FALSE as "canSendMessages" FROM channels c WHERE ($1::uuid IS NULL OR c.server_id=$1::uuid) `
+    const params: any[] = [serverId]
+    
+    // Map of channelId -> canSend
+    const canSendMap = new Map<string, boolean>()
+
+    if (userId) {
+       // Check if owner
+       const s = await pool.query(`SELECT owner_id FROM servers WHERE id=$1::uuid`, [serverId])
+       const isOwner = s.rows[0]?.owner_id === userId
+       
+       if (!isOwner) {
+          // Filter by permissions
+          // Logic: 
+          // 1. If channel has NO permissions rows, it is public (visible to all members)
+          // 2. If channel has permissions rows, user must have a role with can_view=true
+          query += `
+            AND (
+              c.type = 'dm' OR
+              NOT EXISTS (SELECT 1 FROM channel_permissions cp WHERE cp.channel_id = c.id)
+              OR EXISTS (
+                 SELECT 1 FROM channel_permissions cp
+                 JOIN server_member_roles smr ON smr.role_id = cp.role_id
+                 WHERE cp.channel_id = c.id 
+                   AND smr.user_id = $2::uuid
+                   AND smr.server_id = c.server_id
+                   AND cp.can_view = TRUE
+              )
+            )
+          `
+          params.push(userId)
+       }
+       
+       // Calculate canSendMessages for each channel
+       // If owner, true.
+       // If not owner:
+       //   If type=dm, true (if member).
+       //   If type!=dm:
+       //      If NO permission rows, True (public).
+       //      If permission rows, must have can_send_messages=true in one of the roles.
+       // We can fetch all permissions for this user in this server to map it.
+       const perms = await pool.query(
+         `SELECT cp.channel_id, cp.can_send_messages
+          FROM channel_permissions cp
+          JOIN server_member_roles smr ON smr.role_id = cp.role_id
+          WHERE smr.user_id = $1::uuid AND smr.server_id = $2::uuid`,
+         [userId, serverId]
+       )
+       
+       const allChannelIdsWithPerms = await pool.query(
+         `SELECT DISTINCT channel_id FROM channel_permissions 
+          JOIN channels ON channels.id = channel_permissions.channel_id
+          WHERE channels.server_id = $1::uuid`,
+         [serverId]
+       )
+       const restrictedChannels = new Set(allChannelIdsWithPerms.rows.map(r => r.channel_id))
+       
+       // Build map of allowed by perms
+       const allowedByPerms = new Set<string>()
+       for (const p of perms.rows) {
+         if (p.can_send_messages) allowedByPerms.add(p.channel_id)
+       }
+       
+       // We'll post-process the list
+    }
+
+    query += ` ORDER BY c.category, c.name`
+    
+    const ch = await pool.query(query, params)
+    
+    // Post-process canSendMessages
+    if (userId) {
+        const s = await pool.query(`SELECT owner_id FROM servers WHERE id=$1::uuid`, [serverId])
+        const isOwner = s.rows[0]?.owner_id === userId
+        
+        // Get all restricted channels again to be safe (or reuse if we scope it out)
+        const allChannelIdsWithPerms = await pool.query(
+             `SELECT DISTINCT channel_id FROM channel_permissions 
+              JOIN channels ON channels.id = channel_permissions.channel_id
+              WHERE channels.server_id = $1::uuid`,
+             [serverId]
+        )
+        const restrictedChannels = new Set(allChannelIdsWithPerms.rows.map(r => r.channel_id))
+        
+        const userPerms = await pool.query(
+             `SELECT cp.channel_id, cp.can_send_messages
+              FROM channel_permissions cp
+              JOIN server_member_roles smr ON smr.role_id = cp.role_id
+              WHERE smr.user_id = $1::uuid AND smr.server_id = $2::uuid`,
+             [userId, serverId]
+        )
+        const allowedByPerms = new Set<string>()
+        for (const p of userPerms.rows) {
+             if (p.can_send_messages) allowedByPerms.add(p.channel_id)
+        }
+
+        for (const row of ch.rows) {
+            if (row.type === 'dm') {
+               row.canSendMessages = true
+            } else if (isOwner) {
+               row.canSendMessages = true
+            } else {
+               // If restricted, must be in allowedByPerms
+               if (restrictedChannels.has(row.id)) {
+                  row.canSendMessages = allowedByPerms.has(row.id)
+               } else {
+                  // Public
+                  row.canSendMessages = true
+               }
+            }
+        }
+    } else {
+        // No user? default false
+    }
+
     const cats = await pool.query(
       `SELECT name FROM channel_categories WHERE ($1::uuid IS NULL OR server_id=$1::uuid) ORDER BY name`,
       [serverId]
     )
-    const byCat = new Map<string, string[]>()
-    for (const row of ch.rows as { name: string; category: string }[]) {
+    const byCat = new Map<string, { id: string, name: string, type: string, canSendMessages: boolean }[]>()
+    for (const row of ch.rows as { id: string; name: string; category: string; type: string; canSendMessages: boolean }[]) {
       const arr = byCat.get(row.category) || []
-      arr.push(row.name)
+      arr.push(row)
       byCat.set(row.category, arr)
     }
     for (const c of cats.rows as { name: string }[]) {
       if (!byCat.has(c.name)) byCat.set(c.name, [])
     }
-    const sections = Array.from(byCat.entries()).map(([title, channels]) => ({ title, channels }))
+    const sections = Array.from(byCat.entries()).map(([title, channels]) => ({ title, channels: channels.map(c => ({ id: c.id, name: c.name, type: c.type, canSendMessages: c.canSendMessages })) }))
     sections.sort((a, b) => a.title.localeCompare(b.title))
     return { sections }
-  } catch {
+  } catch (e) {
+    console.error(e)
     return { sections: [] }
   }
 })
@@ -1430,12 +1612,13 @@ app.get("/api/users", async (req: FastifyRequest<{ Querystring: { serverId?: str
   }
 })
 
-app.get("/api/messages", async (req: FastifyRequest<{ Querystring: { channel?: string; limit?: string; before?: string } }>) => {
+app.get("/api/messages", async (req: FastifyRequest<{ Querystring: { channel?: string; limit?: string; before?: string; serverId?: string } }>) => {
   const auth = (req.headers as any).authorization as string | undefined
   if (!auth) return { error: "Unauthorized" }
   try {
     const payload = jwt.verify(auth.replace(/^Bearer\s+/i, ""), JWT_SECRET) as any
     const channel = req.query.channel
+    const serverId = req.query.serverId
     const limit = Math.min(Math.max(parseInt(req.query.limit || "50"), 1), 200)
     const before = req.query.before || null
     
@@ -1445,8 +1628,13 @@ app.get("/api/messages", async (req: FastifyRequest<{ Querystring: { channel?: s
     let channelId = channel
     if (!isUUID && channel) {
        // Lookup by name (legacy support for server channels by name)
-       const c = await pool.query(`SELECT id FROM channels WHERE name=$1::text LIMIT 1`, [channel])
-       channelId = c.rows[0]?.id
+       if (serverId) {
+          const c = await pool.query(`SELECT id FROM channels WHERE name=$1::text AND server_id=$2::uuid LIMIT 1`, [channel, serverId])
+          channelId = c.rows[0]?.id
+       } else {
+          const c = await pool.query(`SELECT id FROM channels WHERE name=$1::text LIMIT 1`, [channel])
+          channelId = c.rows[0]?.id
+       }
     }
     
     if (!channelId) return { messages: [] }
@@ -1458,6 +1646,25 @@ app.get("/api/messages", async (req: FastifyRequest<{ Querystring: { channel?: s
     if (c.rows[0].type === 'dm') {
         const m = await pool.query(`SELECT 1 FROM channel_members WHERE channel_id=$1::uuid AND user_id=$2::uuid`, [channelId, payload.sub])
         if (!m.rowCount) return { error: "Unauthorized" }
+    } else {
+        // Check view permissions
+        const hasPerms = await pool.query(`SELECT 1 FROM channel_permissions WHERE channel_id=$1::uuid LIMIT 1`, [channelId])
+        if (hasPerms.rowCount && hasPerms.rowCount > 0) {
+           const perms = await pool.query(
+             `SELECT cp.can_view
+              FROM channel_permissions cp
+              JOIN server_member_roles smr ON smr.role_id = cp.role_id
+              WHERE cp.channel_id = $1::uuid 
+                AND smr.user_id = $2::uuid
+                AND smr.server_id = $3::uuid`,
+             [channelId, payload.sub, c.rows[0].server_id]
+           )
+           const canView = perms.rows.some(r => r.can_view)
+           const serv = await pool.query(`SELECT owner_id FROM servers WHERE id=$1::uuid`, [c.rows[0].server_id])
+           const isOwner = serv.rows[0]?.owner_id === payload.sub
+           
+           if (!canView && !isOwner) return { error: "Unauthorized" }
+        }
     }
 
     const r = await pool.query(
@@ -1495,7 +1702,7 @@ app.get("/api/messages", async (req: FastifyRequest<{ Querystring: { channel?: s
 app.post("/api/messages", async (req) => {
   const auth = (req.headers as any).authorization as string | undefined
   const body = req.body as any
-  const { channel, content } = body || {}
+  const { channel, content, serverId } = body || {}
   if (!auth || !channel || !content) return { error: "Bad request" }
   try {
     const payload = jwt.verify(auth.replace(/^Bearer\s+/i, ""), JWT_SECRET) as any
@@ -1504,9 +1711,15 @@ app.post("/api/messages", async (req) => {
     const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(channel)
     
     if (!isUUID) {
-       const c = await pool.query(`SELECT id FROM channels WHERE name=$1::text LIMIT 1`, [channel])
-       if (!c.rowCount) return { error: "Channel not found" }
-       channelId = c.rows[0].id
+       if (serverId) {
+          const c = await pool.query(`SELECT id FROM channels WHERE name=$1::text AND server_id=$2::uuid LIMIT 1`, [channel, serverId])
+          if (!c.rowCount) return { error: "Channel not found" }
+          channelId = c.rows[0].id
+       } else {
+          const c = await pool.query(`SELECT id FROM channels WHERE name=$1::text LIMIT 1`, [channel])
+          if (!c.rowCount) return { error: "Channel not found" }
+          channelId = c.rows[0].id
+       }
     }
     
     const c = await pool.query(`SELECT server_id, type FROM channels WHERE id=$1::uuid`, [channelId])
@@ -1519,6 +1732,29 @@ app.post("/api/messages", async (req) => {
        const s = await pool.query(`SELECT muted FROM server_members WHERE server_id=$1::uuid AND user_id=$2::uuid`, [c.rows[0].server_id, payload.sub])
        if (!s.rowCount) return { error: "Not a member of this server" }
        if (s.rows[0].muted) return { error: "You are muted" }
+       
+       // Check channel permissions
+       const perms = await pool.query(
+         `SELECT cp.can_send_messages 
+          FROM channel_permissions cp
+          JOIN server_member_roles smr ON smr.role_id = cp.role_id
+          WHERE cp.channel_id = $1::uuid 
+            AND smr.user_id = $2::uuid
+            AND smr.server_id = $3::uuid`,
+         [channelId, payload.sub, c.rows[0].server_id]
+       )
+       
+       // If permissions exist, user must have explicit allow
+       const hasPerms = await pool.query(`SELECT 1 FROM channel_permissions WHERE channel_id=$1::uuid LIMIT 1`, [channelId])
+       if (hasPerms.rowCount && hasPerms.rowCount > 0) {
+          const canSend = perms.rows.some(r => r.can_send_messages)
+          
+          // Check if owner
+          const serv = await pool.query(`SELECT owner_id FROM servers WHERE id=$1::uuid`, [c.rows[0].server_id])
+          const isOwner = serv.rows[0]?.owner_id === payload.sub
+          
+          if (!canSend && !isOwner) return { error: "Missing permissions" }
+       }
     }
 
     const r = await pool.query(
@@ -1743,71 +1979,7 @@ app.patch("/api/servers/:id/roles/:roleId", async (req) => {
   }
 })
 
-app.patch("/api/servers/:id/members/:userId", async (req) => {
-  const auth = (req.headers as any).authorization as string | undefined
-  const id = (req.params as any).id as string
-  const userId = (req.params as any).userId as string
-  const body = req.body as any
-  const { roleIds } = body || {} // Expect array of roleIds
-  if (!auth || !id || !userId) return { error: "Bad request" }
-  try {
-    const payload = jwt.verify(auth.replace(/^Bearer\s+/i, ""), JWT_SECRET) as any
-    const allowed = await checkPermission(payload.sub, id, 'can_manage_roles')
-    if (!allowed) return { error: "Missing permissions" }
-    
-    // Update roles
-    // Transaction to replace all roles
-    const client = await pool.connect()
-    try {
-      await client.query('BEGIN')
-      // Remove old roles
-      await client.query(`DELETE FROM server_member_roles WHERE server_id=$1::uuid AND user_id=$2::uuid`, [id, userId])
-      
-      // Insert new roles
-      if (Array.isArray(roleIds) && roleIds.length > 0) {
-        for (const rid of roleIds) {
-           await client.query(
-             `INSERT INTO server_member_roles (server_id, user_id, role_id) VALUES ($1::uuid, $2::uuid, $3::uuid) ON CONFLICT DO NOTHING`,
-             [id, userId, rid]
-           )
-        }
-      }
-      
-      // Also update the "primary" role in server_members for backward compatibility if needed, 
-      // or just leave it. The GET /api/users endpoint now uses server_member_roles.
-      // But let's update it to the "highest" role just in case other things rely on it.
-      if (Array.isArray(roleIds) && roleIds.length > 0) {
-         // Find highest role
-         // We can't easily know which is highest without querying roles table, but maybe just pick the first one?
-         // Actually, let's just query the DB to find the highest role of the ones we just inserted.
-         const highest = await client.query(
-           `SELECT role_id FROM server_member_roles 
-            JOIN roles ON roles.id = server_member_roles.role_id
-            WHERE server_member_roles.server_id=$1::uuid AND server_member_roles.user_id=$2::uuid
-            ORDER BY roles.position ASC LIMIT 1`,
-            [id, userId]
-         )
-         if (highest.rows[0]) {
-            await client.query(`UPDATE server_members SET role_id=$3::uuid WHERE server_id=$1::uuid AND user_id=$2::uuid`, [id, userId, highest.rows[0].role_id])
-         }
-      } else {
-         await client.query(`UPDATE server_members SET role_id=NULL WHERE server_id=$1::uuid AND user_id=$2::uuid`, [id, userId])
-      }
 
-      await client.query('COMMIT')
-    } catch (e) {
-      await client.query('ROLLBACK')
-      throw e
-    } finally {
-      client.release()
-    }
-
-    return { ok: true }
-  } catch (e) {
-    console.error(e)
-    return { error: "Unauthorized" }
-  }
-})
 
 app.get("/api/servers/:id/members/:userId", async (req) => {
   const auth = (req.headers as any).authorization as string | undefined

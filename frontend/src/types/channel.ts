@@ -15,7 +15,7 @@ export interface Category {
 
 export interface ChannelSection {
   title: string
-  channels: string[] // Seems to be channel names or IDs based on usage
+  channels: { id: string; name: string; type: string; canSendMessages?: boolean }[]
 }
 
 export interface DMChannel {

@@ -12,12 +12,13 @@ interface ChatPanelProps {
   variant: "guild" | "dm"
   channelName: string
   guildName?: string
+  guildId?: string
   onMobileMenu?: () => void
   onUserListToggle?: () => void
   showUserList?: boolean
 }
 
-export default function ChatPanel({ variant, channelName, guildName, onMobileMenu, onUserListToggle, showUserList }: ChatPanelProps) {
+export default function ChatPanel({ variant, channelName, guildName, guildId, onMobileMenu, onUserListToggle, showUserList }: ChatPanelProps) {
   const [msgs, setMsgs] = useState<Message[]>([])
   const [text, setText] = useState("")
   const [typing, setTyping] = useState<Set<string>>(new Set())
@@ -71,13 +72,42 @@ export default function ChatPanel({ variant, channelName, guildName, onMobileMen
     return date.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
   }
 
+  const [canSend, setCanSend] = useState(true)
+
   useEffect(() => {
     if (!channelName) return
-    api.messages(channelName, 50).then((r) => {
+    const token = localStorage.getItem("token") || ""
+    // Pass serverId (guildId) if available to disambiguate channels with same name
+    api.messages(token, channelName, 50, undefined, guildId).then((r) => {
       setMsgs(r.messages)
       setHasMore(r.messages.length >= 50)
-    }).catch(() => setMsgs(Array.from({ length: 24 }).map((_, i) => ({ id: String(i), user: `User ${i % 5}`, text: `Message ${i + 1}`, ts: new Date().toISOString() }))))
-  }, [channelName, user?.id])
+    }).catch(() => {
+      setMsgs([])
+    })
+    
+    // Check channel permissions if in guild
+     if (variant === "guild" && token && guildId) {
+          api.channels(guildId, token).then(res => {
+             // Find our channel
+             // Flatten sections
+            let found = false
+            for (const s of res.sections) {
+               const c = s.channels.find(x => x.name === channelName)
+               if (c) {
+                  setCanSend(c.canSendMessages ?? true)
+                  found = true
+                  break
+               }
+            }
+            if (!found) setCanSend(true) // Default if not found?
+         }).catch(e => {
+            console.error(e)
+            setCanSend(true)
+         })
+    } else {
+       setCanSend(true)
+    }
+  }, [channelName, user?.id, variant, guildName, guildId, token])
 
   useEffect(() => {
     const el = listRef.current
@@ -164,7 +194,7 @@ export default function ChatPanel({ variant, channelName, guildName, onMobileMen
     } catch (e) { console.error(e) }
     try {
       if (token) {
-        const r = await api.sendMessage(token, channelName, t)
+        const r = await api.sendMessage(token, channelName, t, guildId)
         if ("error" in r) {
           console.error("Error sending message:", r.error)
           return
@@ -188,8 +218,9 @@ export default function ChatPanel({ variant, channelName, guildName, onMobileMen
     if (el.scrollTop <= 0) {
       setLoadingMore(true)
       const oldest = msgs[0]?.ts
+      const token = localStorage.getItem("token") || ""
       try {
-        const r = await api.messages(channelName, 50, oldest)
+        const r = await api.messages(token, channelName, 50, oldest, guildId)
         setMsgs((prev) => [...r.messages, ...prev])
         setHasMore(r.messages.length >= 50)
       } finally {
@@ -339,7 +370,8 @@ export default function ChatPanel({ variant, channelName, guildName, onMobileMen
         <div className="flex w-full items-center gap-2">
           <Input
             className="border-0 bg-muted/50 focus-visible:ring-1 focus-visible:ring-ring"
-            placeholder={variant === "guild" ? `Message #${channelName}` : `Message ${channelName}`}
+            placeholder={!canSend ? "You do not have permission to send messages in this channel." : (variant === "guild" ? `Message #${channelName}` : `Message ${channelName}`)}
+            disabled={!canSend}
             value={text}
             onChange={(e) => {
               setText(e.target.value)
@@ -357,7 +389,7 @@ export default function ChatPanel({ variant, channelName, guildName, onMobileMen
               if (e.key === "Enter") send()
             }}
           />
-          <Button variant="brand" onClick={send}>Send</Button>
+          <Button variant="brand" onClick={send} disabled={!canSend}>Send</Button>
         </div>
       </div>
 

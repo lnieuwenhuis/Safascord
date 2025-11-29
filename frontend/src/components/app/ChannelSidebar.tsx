@@ -7,27 +7,43 @@ import { api, getFullUrl } from "@/lib/api"
 import ConfirmDialog from "./ConfirmDialog"
 import { Input } from "@/components/ui/input"
 import type { Server, ChannelSection } from "@/types"
+import ChannelModal from "./ChannelModal"
 
 export default function ChannelSidebar({ guildId, activeChannelId }: { guildId?: string, activeChannelId?: string }) {
   const navigate = useNavigate()
   const [sections, setSections] = useState<ChannelSection[]>([])
   const [server, setServer] = useState<Server | null>(null)
   const [menu, setMenu] = useState<{ channel: string; x: number; y: number } | null>(null)
-  const [editOpen, setEditOpen] = useState(false)
-  const [editName, setEditName] = useState("")
+  
+  // Modals
+  const [createChannelOpen, setCreateChannelOpen] = useState(false)
+  const [createCategoryOpen, setCreateCategoryOpen] = useState(false)
+  const [editChannelId, setEditChannelId] = useState<string | null>(null)
+  const [editChannelName, setEditChannelName] = useState("")
+  
   const [editChannel, setEditChannel] = useState<string | null>(null)
   const [confirmOpen, setConfirmOpen] = useState(false)
-  const [confirmAction, setConfirmAction] = useState<"rename" | "delete" | "create" | null>(null)
-  const [newChannelName, setNewChannelName] = useState("")
-  const [newChannelCategory, setNewChannelCategory] = useState("FST")
+  const [confirmAction, setConfirmAction] = useState<"delete" | null>(null)
+  
+  const [newCategoryName, setNewCategoryName] = useState("")
+  
   const token = typeof window !== "undefined" ? localStorage.getItem("token") || "" : ""
+  
   useEffect(() => {
-    api.channels(guildId).then((r) => setSections(r.sections)).catch(() => setSections([
-      { title: "Admin", channels: ["announcements", "rulebook"] },
-      { title: "Staff", channels: ["roles", "moderation"] },
-      { title: "FST", channels: ["chat-room", "memes", "media", "real-f1", "pets"] },
-    ]))
+    loadChannels()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [guildId])
+  
+  const loadChannels = () => {
+    api.channels(guildId, token).then((r) => {
+      setSections(r.sections)
+    }).catch(() => setSections([
+      { title: "Admin", channels: [{ id: "1", name: "announcements", type: "text" }, { id: "2", name: "rulebook", type: "text" }] },
+      { title: "Staff", channels: [{ id: "3", name: "roles", type: "text" }, { id: "4", name: "moderation", type: "text" }] },
+      { title: "FST", channels: [{ id: "5", name: "chat-room", type: "text" }, { id: "6", name: "memes", type: "text" }, { id: "7", name: "media", type: "text" }, { id: "8", name: "real-f1", type: "text" }, { id: "9", name: "pets", type: "text" }] },
+    ]))
+  }
+
   useEffect(() => {
     if (!guildId) return
     api.servers(token).then((r) => {
@@ -35,6 +51,20 @@ export default function ChannelSidebar({ guildId, activeChannelId }: { guildId?:
       setServer(s || null)
     }).catch(() => setServer(null))
   }, [guildId, token])
+
+  const handleEditChannel = async (channelName: string) => {
+     if (!guildId) return
+     try {
+       const idRes = await api.channelIdByName(guildId, channelName)
+       if (idRes.id) {
+          setEditChannelId(idRes.id)
+          setEditChannelName(channelName)
+       }
+     } catch (e) {
+        console.error(e)
+     }
+  }
+
   return (
     <aside className="flex h-dvh w-full flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground">
       {server?.bannerUrl && (
@@ -62,18 +92,22 @@ export default function ChannelSidebar({ guildId, activeChannelId }: { guildId?:
               <ul className="mt-1 space-y-1">
                 {s.channels.map((c) => (
                   <li
-                    key={c}
-                    className={`flex cursor-pointer items-center gap-2 rounded px-2 py-1 ${c === activeChannelId ? 'bg-sidebar-accent text-sidebar-accent-foreground' : 'hover:bg-sidebar-accent hover:text-sidebar-accent-foreground'}`}
+                    key={c.id}
+                    className={`flex cursor-pointer items-center gap-2 rounded px-2 py-1 ${c.name === activeChannelId ? 'bg-sidebar-accent text-sidebar-accent-foreground' : 'hover:bg-sidebar-accent hover:text-sidebar-accent-foreground'}`}
                     onClick={() => {
                       if (guildId) {
-                        setSelection({ channelId: c })
-                        navigate(`/server/${guildId}/channel/${c}`)
+                        setSelection({ channelId: c.name })
+                        navigate(`/server/${guildId}/channel/${c.name}`)
                       }
                     }}
-                    onContextMenu={(e) => { e.preventDefault(); setMenu({ channel: c, x: e.clientX, y: e.clientY }); setEditName(c); setEditChannel(c) }}
+                    onContextMenu={(e) => { 
+                      e.preventDefault(); 
+                      setMenu({ channel: c.name, x: e.clientX, y: e.clientY }); 
+                      setEditChannel(c.name) 
+                    }}
                   >
-                    <Hash className={`h-4 w-4 ${c === activeChannelId ? 'text-sidebar-accent-foreground' : 'text-muted-foreground'}`} />
-                    <span className="text-sm">{c}</span>
+                    <Hash className={`h-4 w-4 ${c.name === activeChannelId ? 'text-sidebar-accent-foreground' : 'text-muted-foreground'}`} />
+                    <span className="text-sm">{c.name}</span>
                   </li>
                 ))}
               </ul>
@@ -88,13 +122,14 @@ export default function ChannelSidebar({ guildId, activeChannelId }: { guildId?:
         <div className="fixed z-[120] rounded border border-border bg-popover shadow-md text-popover-foreground" style={{ left: menu.x, top: menu.y }} onMouseLeave={() => setMenu(null)}>
           {menu.channel === "__header__" ? (
             <>
-              <button className="block w-40 px-3 py-2 text-left hover:bg-accent hover:text-accent-foreground text-sm" onClick={() => { setNewChannelName(""); setNewChannelCategory("FST"); setEditOpen(true); setConfirmAction("create") }}>Create Channel</button>
-              <button className="block w-40 px-3 py-2 text-left hover:bg-accent hover:text-accent-foreground text-sm" onClick={async () => {
-                setMenu(null)
-                setEditOpen(true)
-                setConfirmAction("create")
-                setNewChannelName("")
-                setNewChannelCategory("FST")
+              <button className="block w-40 px-3 py-2 text-left hover:bg-accent hover:text-accent-foreground text-sm" onClick={() => { 
+                 setCreateChannelOpen(true); 
+                 setMenu(null)
+              }}>Create Channel</button>
+              <button className="block w-40 px-3 py-2 text-left hover:bg-accent hover:text-accent-foreground text-sm" onClick={() => {
+                 setCreateCategoryOpen(true);
+                 setNewCategoryName("");
+                 setMenu(null)
               }}>Create Category</button>
               <button className="block w-40 px-3 py-2 text-left hover:bg-accent hover:text-accent-foreground text-sm" onClick={async () => {
                 setMenu(null)
@@ -106,35 +141,52 @@ export default function ChannelSidebar({ guildId, activeChannelId }: { guildId?:
             </>
           ) : (
             <>
-              <button className="block w-40 px-3 py-2 text-left hover:bg-accent hover:text-accent-foreground text-sm" onClick={() => { setEditOpen(true); setConfirmOpen(false); setConfirmAction("rename") }}>Edit name</button>
-              <button className="block w-40 px-3 py-2 text-left hover:bg-accent hover:text-accent-foreground text-sm text-destructive" onClick={() => { setConfirmOpen(true); setConfirmAction("delete") }}>Delete channel</button>
+              <button className="block w-40 px-3 py-2 text-left hover:bg-accent hover:text-accent-foreground text-sm" onClick={() => { 
+                 setMenu(null)
+                 handleEditChannel(menu.channel)
+              }}>Edit Channel</button>
+              <button className="block w-40 px-3 py-2 text-left hover:bg-accent hover:text-accent-foreground text-sm text-destructive" onClick={() => { 
+                 setMenu(null)
+                 setConfirmOpen(true); 
+                 setConfirmAction("delete") 
+              }}>Delete channel</button>
             </>
           )}
         </div>
       )}
-      {editOpen && (
-        <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/60 backdrop-blur-sm supports-[backdrop-filter]:bg-black/50 p-4" onClick={() => setEditOpen(false)}>
+      
+      {/* Create/Edit Channel Modal */}
+      <ChannelModal 
+         open={createChannelOpen || !!editChannelId}
+         onClose={() => { setCreateChannelOpen(false); setEditChannelId(null) }}
+         serverId={guildId || ""}
+         initialData={editChannelId ? { id: editChannelId, name: editChannelName } : undefined}
+         onSuccess={() => loadChannels()}
+      />
+
+      {/* Create Category Modal */}
+      {createCategoryOpen && (
+        <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/60 backdrop-blur-sm supports-[backdrop-filter]:bg-black/50 p-4" onClick={() => setCreateCategoryOpen(false)}>
           <div className="w-[420px] rounded-lg border border-border bg-card p-4 shadow-xl text-card-foreground" onClick={(e) => e.stopPropagation()}>
-            <div className="text-lg font-semibold">{confirmAction === "create" ? "Create channel" : "Edit channel name"}</div>
-            {confirmAction === "create" ? (
-              <>
-                <div className="mt-2"><Input placeholder="Channel name" value={newChannelName} onChange={(e) => setNewChannelName(e.target.value)} /></div>
-                <div className="mt-2"><Input placeholder="Category" value={newChannelCategory} onChange={(e) => setNewChannelCategory(e.target.value)} /></div>
-              </>
-            ) : (
-              <div className="mt-2"><Input value={editName} onChange={(e) => setEditName(e.target.value)} /></div>
-            )}
+            <div className="text-lg font-semibold">Create Category</div>
+            <div className="mt-2"><Input placeholder="Category Name" value={newCategoryName} onChange={(e) => setNewCategoryName(e.target.value)} /></div>
             <div className="mt-6 flex items-center justify-end gap-2">
-              <button className="rounded border border-white/10 bg-transparent px-3 py-2" onClick={() => setEditOpen(false)}>Cancel</button>
-              <button className="rounded bg-brand px-3 py-2" onClick={() => { setEditOpen(false); setConfirmOpen(true); if (confirmAction !== "create") setConfirmAction("rename") }}>Save</button>
+              <button className="rounded border border-white/10 bg-transparent px-3 py-2" onClick={() => setCreateCategoryOpen(false)}>Cancel</button>
+              <button className="rounded bg-brand px-3 py-2" onClick={async () => { 
+                 if (!guildId || !newCategoryName) return
+                 await api.createCategory(token, guildId, newCategoryName)
+                 loadChannels()
+                 setCreateCategoryOpen(false)
+              }}>Create</button>
             </div>
           </div>
         </div>
       )}
+
       <ConfirmDialog
         open={confirmOpen}
-        title={confirmAction === "delete" ? "Delete channel" : confirmAction === "create" ? "Create channel" : "Confirm edit"}
-        description={confirmAction === "delete" ? "This will remove the channel." : confirmAction === "create" ? "Create a new channel?" : `Rename channel to "${editName}"?`}
+        title={"Delete channel"}
+        description={"This will remove the channel."}
         onCancel={() => setConfirmOpen(false)}
         onConfirm={async () => {
           setConfirmOpen(false)
@@ -142,24 +194,7 @@ export default function ChannelSidebar({ guildId, activeChannelId }: { guildId?:
           if (confirmAction === "delete" && editChannel) {
             const idRes = await api.channelIdByName(guildId, editChannel)
             if (idRes.id) await api.deleteChannel(token, idRes.id)
-            const res = await api.channels(guildId)
-            setSections(res.sections)
-          } else if (confirmAction === "rename" && editChannel) {
-            const idRes = await api.channelIdByName(guildId, editChannel)
-            if (idRes.id) await api.renameChannel(token, idRes.id, editName)
-            const res = await api.channels(guildId)
-            setSections(res.sections)
-          } else if (confirmAction === "create") {
-            if (editOpen) {
-              // fallback no-op
-            }
-            if (newChannelName && guildId) {
-              await api.createChannel(token, guildId, newChannelName, newChannelCategory || "FST")
-            } else if (guildId && newChannelCategory) {
-              await api.createCategory(token, guildId, newChannelCategory)
-            }
-            const res = await api.channels(guildId)
-            setSections(res.sections)
+            loadChannels()
           }
         }}
       />
