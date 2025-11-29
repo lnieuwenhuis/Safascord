@@ -1,16 +1,18 @@
-FROM oven/bun:1 AS build
+FROM node:20-alpine AS build
 WORKDIR /app
-COPY package.json bun.lock ./
-RUN bun install --no-frozen-lockfile
+# Copy package files (including bun.lock if you want to use it, but npm won't use it directly unless we use bun, so we'll rely on package.json)
+# Ideally we'd have package-lock.json, but since we don't, npm install will generate one.
+COPY package.json ./
+RUN npm install
 COPY tsconfig.json ./
 COPY src ./src
-RUN bun run build
+RUN npm run build
 
-FROM oven/bun:1
+FROM node:20-alpine
 WORKDIR /app
 ENV NODE_ENV=production
-COPY package.json bun.lock ./
-RUN bun install --production --no-frozen-lockfile
+COPY package.json ./
+RUN npm install --production
 COPY --from=build /app/dist ./dist
 EXPOSE 4000
-CMD ["bun", "run", "dist/server.js"]
+CMD ["node", "dist/server.js"]
