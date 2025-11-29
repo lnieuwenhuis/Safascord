@@ -18,8 +18,8 @@ import { StatsPage } from "./components/admin/StatsPage"
 function RoutePersister() {
   const location = useLocation()
   useEffect(() => {
-    // Don't save 404 or auth pages as the "last route" to return to
-    if (location.pathname !== "/404" && location.pathname !== "/auth" && location.pathname !== "/") {
+    // Don't save 404, auth, or onboarding pages as the "last route" to return to
+    if (location.pathname !== "/404" && location.pathname !== "/auth" && location.pathname !== "/" && location.pathname !== "/onboarding") {
       localStorage.setItem("last_route", location.pathname + location.search + location.hash)
     }
   }, [location])

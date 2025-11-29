@@ -7,19 +7,23 @@ type Msg = { type: string; channel?: string; user?: string; userId?: string }
 const port = Number(process.env.PORT || 4001)
 
 // Redis Setup (Standalone or Cluster)
-let redis: Redis | Cluster
+let sub: Redis | Cluster
+let pub: Redis | Cluster
+
 if (process.env.REDIS_CLUSTER_NODES) {
-  redis = new Redis.Cluster(process.env.REDIS_CLUSTER_NODES.split(","))
+  sub = new Redis.Cluster(process.env.REDIS_CLUSTER_NODES.split(","))
+  pub = new Redis.Cluster(process.env.REDIS_CLUSTER_NODES.split(","))
 } else {
-  redis = new Redis(process.env.REDIS_URL || "redis://localhost:6379")
+  sub = new Redis(process.env.REDIS_URL || "redis://localhost:6379")
+  pub = new Redis(process.env.REDIS_URL || "redis://localhost:6379")
 }
 
-redis.subscribe("messages", (err) => {
+sub.subscribe("messages", (err) => {
   if (err) console.error("Failed to subscribe to Redis:", err)
   else console.log("Subscribed to Redis channel: messages")
 })
 
-redis.on("message", (channel, message) => {
+sub.on("message", (channel, message) => {
   if (channel === "messages") {
     try {
       const parsed = JSON.parse(message) as { channel?: string; data?: any }
@@ -107,13 +111,13 @@ wss.on("connection", (ws: WebSocket) => {
     }
     if (msg.type === "typing.start" && msg.channel && msg.user) {
       try {
-        redis.publish("messages", JSON.stringify({ channel: msg.channel, data: { type: "typing", channel: msg.channel, user: msg.user, userId: msg.userId, active: true } }))
+        pub.publish("messages", JSON.stringify({ channel: msg.channel, data: { type: "typing", channel: msg.channel, user: msg.user, userId: msg.userId, active: true } }))
       } catch {}
       return
     }
     if (msg.type === "typing.stop" && msg.channel && msg.user) {
       try {
-        redis.publish("messages", JSON.stringify({ channel: msg.channel, data: { type: "typing", channel: msg.channel, user: msg.user, userId: msg.userId, active: false } }))
+        pub.publish("messages", JSON.stringify({ channel: msg.channel, data: { type: "typing", channel: msg.channel, user: msg.user, userId: msg.userId, active: false } }))
       } catch {}
       return
     }

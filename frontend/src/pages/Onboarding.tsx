@@ -56,7 +56,7 @@ export default function Onboarding() {
       if (updatedUser) {
         updateUser(updatedUser)
         const storedPath = localStorage.getItem("last_route")
-        const validStoredPath = (storedPath && storedPath !== "/404" && storedPath !== "/auth" && storedPath !== "/") ? storedPath : "/channels/@me"
+        const validStoredPath = (storedPath && storedPath !== "/404" && storedPath !== "/auth" && storedPath !== "/" && storedPath !== "/onboarding") ? storedPath : "/channels/@me"
         navigate(validStoredPath, { replace: true })
       } else {
         setIsLoading(false)
