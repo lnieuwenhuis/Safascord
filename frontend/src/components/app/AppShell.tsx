@@ -63,7 +63,7 @@ export default function AppShell({
           "grid-cols-[1fr]",
           "md:grid-cols-[64px_260px_1fr]",
           variant === "guild" && showUserList 
-            ? "lg:grid-cols-[64px_260px_1fr_300px]" 
+            ? "lg:grid-cols-[64px_260px_1fr_240px]" 
             : "lg:grid-cols-[64px_260px_1fr]"
         )}
       >

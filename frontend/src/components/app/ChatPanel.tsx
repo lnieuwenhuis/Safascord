@@ -5,6 +5,8 @@ import { useEffect, useRef, useState } from "react"
 import { api, getFullUrl } from "@/lib/api"
 import { useAuth } from "@/hooks/useAuth"
 import { cn } from "@/lib/utils"
+import UserProfileDialog from "./UserProfileDialog"
+import type { Message } from "@/types"
 
 interface ChatPanelProps {
   variant: "guild" | "dm"
@@ -16,7 +18,7 @@ interface ChatPanelProps {
 }
 
 export default function ChatPanel({ variant, channelName, guildName, onMobileMenu, onUserListToggle, showUserList }: ChatPanelProps) {
-  const [msgs, setMsgs] = useState<{ id: string; user: string; userAvatar?: string; userId?: string; text: string; ts?: string }[]>([])
+  const [msgs, setMsgs] = useState<Message[]>([])
   const [text, setText] = useState("")
   const [typing, setTyping] = useState<Set<string>>(new Set())
   const listRef = useRef<HTMLDivElement | null>(null)
@@ -24,9 +26,26 @@ export default function ChatPanel({ variant, channelName, guildName, onMobileMen
   const idleRef = useRef<number | null>(null)
   const [hasMore, setHasMore] = useState(true)
   const [loadingMore, setLoadingMore] = useState(false)
+  const [selectedUserId, setSelectedUserId] = useState<string | null>(null)
+  const [dmUser, setDmUser] = useState<{ username: string; displayName: string } | null>(null)
   const { user } = useAuth()
   const token = typeof window !== "undefined" ? (localStorage.getItem("token") || "") : ""
   
+  useEffect(() => {
+    if (variant === "dm" && channelName && token) {
+      // Try to find the DM user name
+      // This is a bit inefficient to fetch all DMs, but works for now without new API endpoints
+      api.getDMs(token).then(res => {
+        const dm = res.dms.find(d => d.id === channelName)
+        if (dm) {
+           setDmUser(dm.user)
+        }
+      }).catch(() => {})
+    } else {
+      setDmUser(null)
+    }
+  }, [variant, channelName, token])
+
   const display = (user && (user.displayName || user.username)) || "You"
   const myAvatar = user?.avatarUrl
 
@@ -57,7 +76,7 @@ export default function ChatPanel({ variant, channelName, guildName, onMobileMen
     api.messages(channelName, 50).then((r) => {
       setMsgs(r.messages)
       setHasMore(r.messages.length >= 50)
-    }).catch(() => setMsgs(Array.from({ length: 24 }).map((_, i) => ({ id: String(i), user: `User ${i % 5}`, text: `Message ${i + 1}` }))))
+    }).catch(() => setMsgs(Array.from({ length: 24 }).map((_, i) => ({ id: String(i), user: `User ${i % 5}`, text: `Message ${i + 1}`, ts: new Date().toISOString() }))))
   }, [channelName, user?.id])
 
   useEffect(() => {
@@ -85,7 +104,7 @@ export default function ChatPanel({ variant, channelName, guildName, onMobileMen
       ws.onmessage = (ev) => {
         let data: unknown
         try { data = JSON.parse(String(ev.data)) } catch { return }
-        const d = data as { type?: string; channel?: string; user?: string; userAvatar?: string; userId?: string; active?: boolean; message?: { id: string; text: string; ts?: string } }
+        const d = data as { type?: string; channel?: string; user?: string; userAvatar?: string; userId?: string; active?: boolean; message?: { id: string; text: string; ts?: string }; roleColor?: string }
         if (d.type === "typing" && d.channel === channelName && d.user) {
           if (user?.id && d.userId === user.id) return
           const name = d.user
@@ -106,7 +125,8 @@ export default function ChatPanel({ variant, channelName, guildName, onMobileMen
               userAvatar: d.userAvatar,
               userId: d.userId,
               text: d.message!.text, 
-              ts: d.message!.ts 
+              ts: d.message!.ts || new Date().toISOString(),
+              roleColor: d.roleColor
             }]
           })
           if (d.user) setTyping((prev) => { const next = new Set(prev); next.delete(d.user!); return next })
@@ -152,13 +172,13 @@ export default function ChatPanel({ variant, channelName, guildName, onMobileMen
         const ts = r.message.ts
         setMsgs((prev) => {
           if (prev.some((x) => x.id === r.message!.id)) return prev
-          return [...prev, { id: r.message!.id, user: display, userAvatar: myAvatar || undefined, userId: user?.id, text: t, ts }]
+          return [...prev, { id: r.message!.id, user: display, userAvatar: myAvatar || undefined, userId: user?.id, text: t, ts, roleColor: (r.message).roleColor }]
         })
       } else {
-        setMsgs((prev) => [...prev, { id: String(Date.now()), user: display, text: t }])
+        setMsgs((prev) => [...prev, { id: String(Date.now()), user: display, text: t, ts: new Date().toISOString() }])
       }
     } catch {
-      setMsgs((prev) => [...prev, { id: String(Date.now()), user: display, text: t }])
+      setMsgs((prev) => [...prev, { id: String(Date.now()), user: display, text: t, ts: new Date().toISOString() }])
     }
   }
 
@@ -192,7 +212,7 @@ export default function ChatPanel({ variant, channelName, guildName, onMobileMen
           )}
           <div className="text-sm font-semibold">
             {variant === "guild" && guildName ? <span className="text-muted-foreground">{guildName} · </span> : null}
-            {variant === "guild" ? `#${channelName}` : channelName}
+            {variant === "guild" ? `#${channelName}` : (dmUser ? (dmUser.displayName || dmUser.username) : "Direct Message")}
           </div>
         </div>
         <div className="flex items-center">
@@ -211,7 +231,7 @@ export default function ChatPanel({ variant, channelName, guildName, onMobileMen
       <div ref={listRef} onScroll={onScroll} className="flex-1 min-h-0 overflow-y-auto p-4">
         <div className="space-y-4">
           {(() => {
-            type Group = { type: 'group'; user: string; userAvatar?: string; userId?: string; messages: { id: string; text: string; ts?: string }[] }
+            type Group = { type: 'group'; user: string; userAvatar?: string; userId?: string; messages: { id: string; text: string; ts?: string }[]; roleColor?: string }
             type DateSep = { type: 'date'; date: Date; id: string }
             const nodes: (Group | DateSep)[] = []
             
@@ -245,7 +265,8 @@ export default function ChatPanel({ variant, channelName, guildName, onMobileMen
                  user: m.user,
                  userAvatar: m.userAvatar,
                  userId: m.userId,
-                 messages: [{ id: m.id, text: m.text, ts: m.ts }]
+                 messages: [{ id: m.id, text: m.text, ts: m.ts }],
+                 roleColor: m.roleColor
               }
               nodes.push(currentGroup)
             }
@@ -275,7 +296,10 @@ export default function ChatPanel({ variant, channelName, guildName, onMobileMen
 
               return (
                 <div key={first.id} className="flex items-start gap-3 group hover:bg-muted/50 -mx-4 px-4 py-0.5 mt-[17px]">
-                  <div className="h-8 w-8 rounded-full bg-primary/20 mt-0.5 overflow-hidden shrink-0 cursor-pointer hover:opacity-80">
+                  <div 
+                    className="h-8 w-8 rounded-full bg-primary/20 mt-0.5 overflow-hidden shrink-0 cursor-pointer hover:opacity-80"
+                    onClick={() => g.userId && setSelectedUserId(g.userId)}
+                  >
                     {avatarUrl ? (
                       <img src={avatarUrl} alt={g.user} className="h-full w-full object-cover block" />
                     ) : (
@@ -286,7 +310,11 @@ export default function ChatPanel({ variant, channelName, guildName, onMobileMen
                   </div>
                   <div className="min-w-0 flex-1">
                     <div className="flex items-baseline gap-2">
-                      <div className="text-sm font-medium text-foreground hover:underline cursor-pointer">
+                      <div 
+                        className="text-sm font-medium text-foreground hover:underline cursor-pointer"
+                        onClick={() => g.userId && setSelectedUserId(g.userId)}
+                        style={{ color: g.roleColor || undefined }}
+                      >
                         {isMe && user.displayName ? user.displayName : g.user}
                       </div>
                       {first.ts && <div className="text-xs text-muted-foreground">{fmt(first.ts)}</div>}
@@ -332,6 +360,12 @@ export default function ChatPanel({ variant, channelName, guildName, onMobileMen
           <Button variant="brand" onClick={send}>Send</Button>
         </div>
       </div>
+
+      <UserProfileDialog 
+        userId={selectedUserId} 
+        isOpen={!!selectedUserId} 
+        onClose={() => setSelectedUserId(null)} 
+      />
     </div>
   )
 }

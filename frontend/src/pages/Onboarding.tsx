@@ -4,6 +4,10 @@ import { useAuth } from "../components/AuthProvider"
 import { api } from "../lib/api"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Label } from "@/components/ui/label"
+import { Textarea } from "@/components/ui/textarea"
+import type { User } from "@/types"
 
 export default function Onboarding() {
   const { user, updateUser, isAuthenticated, isLoading: authLoading } = useAuth()
@@ -20,7 +24,6 @@ export default function Onboarding() {
          navigate("/auth")
      }
      if (user) {
-         // Only set initial values if state is empty
          setUsername(prev => prev || user.username)
          setDisplayName(prev => prev || (user.displayName || user.username))
      }
@@ -48,12 +51,16 @@ export default function Onboarding() {
         return
       }
 
-      if (res.user) {
-        updateUser(res.user)
-        // Navigate to home or stored path
+      const updatedUser = res.user || ((res as User).id ? (res as User) : null)
+
+      if (updatedUser) {
+        updateUser(updatedUser)
         const storedPath = localStorage.getItem("last_route")
         const validStoredPath = (storedPath && storedPath !== "/404" && storedPath !== "/auth" && storedPath !== "/") ? storedPath : "/channels/@me"
         navigate(validStoredPath, { replace: true })
+      } else {
+        setIsLoading(false)
+        setError("Unexpected response from server")
       }
     } catch (err) {
       console.error(err)
@@ -62,70 +69,73 @@ export default function Onboarding() {
     }
   }
   
-  if (authLoading) return <div className="flex h-screen items-center justify-center bg-[#313338] text-white">Loading...</div>
+  if (authLoading) return (
+    <div className="flex h-screen items-center justify-center bg-background">
+      <div className="animate-pulse text-muted-foreground">Loading...</div>
+    </div>
+  )
 
   return (
-    <div className="flex h-screen w-screen items-center justify-center bg-[#313338] text-white">
-      <div className="w-full max-w-md rounded-lg bg-[#313338] p-8 shadow-2xl sm:bg-[#2b2d31]">
-        <div className="mb-8 text-center">
-          <h1 className="mb-2 text-2xl font-bold">Welcome!</h1>
-          <p className="text-[#b5bac1]">Let's set up your profile before we jump in.</p>
-        </div>
-
-        {error && (
-          <div className="mb-4 rounded bg-red-500/10 p-2 text-sm text-red-400">
-            {error}
+    <div className="flex min-h-screen items-center justify-center bg-background p-4 relative overflow-hidden">
+      <div className="absolute inset-0 bg-gradient-to-br from-primary/10 via-transparent to-primary/5 pointer-events-none" />
+      <Card className="relative z-10 w-full max-w-md border-border bg-card shadow-xl">
+        <CardHeader className="text-center space-y-2">
+          <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-primary/10 text-primary">
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
           </div>
-        )}
+          <CardTitle className="text-2xl font-bold">Welcome!</CardTitle>
+          <CardDescription>Let's set up your profile before we jump in.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          {error && (
+            <div className="mb-4 rounded-md bg-destructive/10 p-3 text-sm text-destructive">
+              {error}
+            </div>
+          )}
 
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="space-y-2">
-            <label htmlFor="username" className="text-xs font-bold uppercase text-[#b5bac1]">
-              Username
-            </label>
-            <Input
-              id="username"
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
-              className="bg-[#1e1f22] border-none text-white focus-visible:ring-offset-0 focus-visible:ring-[#5865F2]"
-              required
-            />
-          </div>
+          <form onSubmit={handleSubmit} className="space-y-6">
+            <div className="space-y-2">
+              <Label htmlFor="username">Username</Label>
+              <Input
+                id="username"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                placeholder="johndoe"
+                required
+              />
+            </div>
 
-          <div className="space-y-2">
-            <label htmlFor="displayName" className="text-xs font-bold uppercase text-[#b5bac1]">
-              Display Name
-            </label>
-            <Input
-              id="displayName"
-              value={displayName}
-              onChange={(e) => setDisplayName(e.target.value)}
-              className="bg-[#1e1f22] border-none text-white focus-visible:ring-offset-0 focus-visible:ring-[#5865F2]"
-            />
-          </div>
+            <div className="space-y-2">
+              <Label htmlFor="displayName">Display Name</Label>
+              <Input
+                id="displayName"
+                value={displayName}
+                onChange={(e) => setDisplayName(e.target.value)}
+                placeholder="John Doe"
+              />
+            </div>
 
-          <div className="space-y-2">
-            <label htmlFor="bio" className="text-xs font-bold uppercase text-[#b5bac1]">
-              About Me
-            </label>
-            <textarea
-              id="bio"
-              value={bio}
-              onChange={(e) => setBio(e.target.value)}
-              placeholder="Tell us about yourself..."
-              className="flex min-h-[100px] w-full rounded-md bg-[#1e1f22] px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[#5865F2] disabled:cursor-not-allowed disabled:opacity-50 resize-none text-white"
-            />
-          </div>
+            <div className="space-y-2">
+              <Label htmlFor="bio">About Me</Label>
+              <Textarea
+                id="bio"
+                value={bio}
+                onChange={(e) => setBio(e.target.value)}
+                placeholder="Tell us a bit about yourself..."
+                className="min-h-[100px] resize-none"
+              />
+            </div>
 
-          <Button
-            type="submit"
-            disabled={isLoading}
-            className="w-full bg-[#5865F2] hover:bg-[#4752c4] text-white font-medium py-2.5"
-          >
-            {isLoading ? "Saving..." : "Complete Setup"}
-          </Button>
-        </form>
-      </div>
+            <Button
+              type="submit"
+              disabled={isLoading}
+              className="w-full"
+            >
+              {isLoading ? "Saving..." : "Complete Setup"}
+            </Button>
+          </form>
+        </CardContent>
+      </Card>
     </div>
   )
 }

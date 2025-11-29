@@ -42,12 +42,79 @@ async function start() {
     await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS banner_url TEXT;`)
     await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar_url TEXT;`)
     await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'online';`)
+    await pool.query(`ALTER TABLE servers ADD COLUMN IF NOT EXISTS description TEXT;`)
+    await pool.query(`ALTER TABLE servers ADD COLUMN IF NOT EXISTS icon_url TEXT;`)
+    await pool.query(`ALTER TABLE servers ADD COLUMN IF NOT EXISTS banner_url TEXT;`)
+    await pool.query(`ALTER TABLE roles ADD COLUMN IF NOT EXISTS color TEXT DEFAULT '#99aab5';`)
+    await pool.query(`ALTER TABLE roles ADD COLUMN IF NOT EXISTS can_manage_channels BOOLEAN DEFAULT FALSE;`)
+    await pool.query(`ALTER TABLE roles ADD COLUMN IF NOT EXISTS can_manage_server BOOLEAN DEFAULT FALSE;`)
+    await pool.query(`ALTER TABLE roles ADD COLUMN IF NOT EXISTS can_manage_roles BOOLEAN DEFAULT FALSE;`)
+    await pool.query(`ALTER TABLE roles ADD COLUMN IF NOT EXISTS position INTEGER DEFAULT 0;`)
+    
+    // Backfill roles for existing servers
+    const servers = await pool.query(`SELECT id, owner_id FROM servers`)
+    for (const s of servers.rows) {
+       const roles = await pool.query(`SELECT id, name FROM roles WHERE server_id=$1::uuid`, [s.id])
+       let ownerRoleId = roles.rows.find(r => r.name === 'Owner')?.id
+       let memberRoleId = roles.rows.find(r => r.name === 'Member')?.id
+       
+       if (!ownerRoleId) {
+           const r = await pool.query(`INSERT INTO roles (server_id, name, color, display_group, can_manage_channels, can_manage_server, can_manage_roles) VALUES ($1::uuid, 'Owner', '#ff0000', 'Owner', true, true, true) RETURNING id`, [s.id])
+           ownerRoleId = r.rows[0].id
+       }
+       if (!memberRoleId) {
+           const r = await pool.query(`INSERT INTO roles (server_id, name, color, display_group, can_manage_channels, can_manage_server, can_manage_roles) VALUES ($1::uuid, 'Member', '#99aab5', 'Member', false, false, false) RETURNING id`, [s.id])
+           memberRoleId = r.rows[0].id
+       }
+       
+       // Assign Owner role to owner if missing
+       await pool.query(`UPDATE server_members SET role_id=$1::uuid WHERE server_id=$2::uuid AND user_id=$3::uuid AND role_id IS NULL`, [ownerRoleId, s.id, s.owner_id])
+       
+       // Assign Member role to others if missing
+       await pool.query(`UPDATE server_members SET role_id=$1::uuid WHERE server_id=$2::uuid AND user_id!=$3::uuid AND role_id IS NULL`, [memberRoleId, s.id, s.owner_id])
+    }
   } catch (e) {
     console.error("Migration failed", e)
   }
 }
 
 app.get("/api/health", async () => ({ ok: true }))
+
+app.get("/api/debug/db", async () => {
+  try {
+    const tables = await pool.query(`SELECT table_name FROM information_schema.tables WHERE table_schema='public'`)
+    // Use try-catch for users query in case table doesn't exist
+    let users = { rows: [] }
+    try {
+      users = await pool.query(`SELECT * FROM users LIMIT 5`)
+    } catch (e) { console.error("Error querying users:", e) }
+    
+    const usersCols = await pool.query(`SELECT column_name, data_type FROM information_schema.columns WHERE table_name='users'`)
+    return { 
+      tables: tables.rows, 
+      users: users.rows,
+      userColumns: usersCols.rows
+    }
+  } catch (e) {
+    return { error: String(e) }
+  }
+})
+
+app.post("/api/debug/migrate", async () => {
+  try {
+    await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS bio TEXT;`)
+    await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS banner_color TEXT DEFAULT '#000000';`)
+    await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS banner_url TEXT;`)
+    await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar_url TEXT;`)
+    await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'online';`)
+    await pool.query(`ALTER TABLE servers ADD COLUMN IF NOT EXISTS description TEXT;`)
+    await pool.query(`ALTER TABLE servers ADD COLUMN IF NOT EXISTS icon_url TEXT;`)
+    await pool.query(`ALTER TABLE servers ADD COLUMN IF NOT EXISTS banner_url TEXT;`)
+    return { ok: true }
+  } catch (e) {
+    return { error: String(e) }
+  }
+})
 
 app.post("/api/upload", async (req, reply) => {
   const data = await req.file()
@@ -77,6 +144,7 @@ app.get("/api/auth/workos-url", async (req) => {
 
 app.post("/api/auth/workos-callback", async (req) => {
   const { code } = req.body as any
+  console.log("WorkOS Callback received code:", code ? "Yes" : "No")
   if (!code) return { error: "Missing code" }
   try {
     const { user } = await workos.userManagement.authenticateWithCode({
@@ -84,13 +152,18 @@ app.post("/api/auth/workos-callback", async (req) => {
       code,
     })
     
+    console.log("WorkOS Authenticated user:", user.email, user.id)
+    
     const email = user.email
     if (!email) return { error: "No email from provider" }
     
     let dbUser = await findUserByUsernameOrEmail(email)
+    console.log("DB User found:", dbUser ? dbUser.id : "None")
+    
     let isNew = false
     if (!dbUser) {
       isNew = true
+      console.log("Creating new user for email:", email)
       let username = email.split('@')[0]
       const check = await pool.query("SELECT 1 FROM users WHERE username=$1 LIMIT 1", [username])
       if (check.rowCount && check.rowCount > 0) {
@@ -100,6 +173,7 @@ app.post("/api/auth/workos-callback", async (req) => {
       const passwordHash = "workos_auth" 
       const displayName = user.firstName ? `${user.firstName} ${user.lastName || ""}`.trim() : username
       
+      console.log("Inserting user:", username, email)
       const r = await pool.query(
         `INSERT INTO users (username, email, password_hash, display_name, avatar_url)
          VALUES ($1,$2,$3,$4,$5)
@@ -108,6 +182,7 @@ app.post("/api/auth/workos-callback", async (req) => {
       )
       
       const u = r.rows[0]
+      console.log("User created:", u)
       try {
         const sr = await pool.query(`SELECT id FROM servers WHERE name='FST [est. 2025]' LIMIT 1`)
         const sid = sr.rows[0]?.id as string | undefined
@@ -116,17 +191,20 @@ app.post("/api/auth/workos-callback", async (req) => {
            const rid = rr.rows[0]?.id as string | undefined
            await pool.query(`INSERT INTO server_members (server_id, user_id, role_id) VALUES ($1::uuid,$2::uuid,$3::uuid) ON CONFLICT DO NOTHING`, [sid, u.id, rid || null])
         }
-      } catch {}
+      } catch (err) {
+         console.error("Error adding to default server:", err)
+      }
       
       dbUser = { ...u, password_hash: passwordHash }
     }
     
     if (!dbUser) return { error: "User not found" }
     const token = signToken({ id: dbUser.id, username: dbUser.username })
+    console.log("Token generated for user:", dbUser.id)
     return { token, user: { id: dbUser.id, username: dbUser.username, email: dbUser.email, displayName: dbUser.display_name }, isNew }
     
   } catch (e) {
-    console.error(e)
+    console.error("WorkOS Callback Error:", e)
     return { error: "Authentication failed" }
   }
 })
@@ -172,7 +250,11 @@ app.post("/api/auth/login", async (req) => {
     if (mr.rowCount === 0) {
       const sr = await pool.query(`SELECT id FROM servers WHERE name='FST [est. 2025]' LIMIT 1`)
       const sid = sr.rows[0]?.id as string | undefined
-      if (sid) await pool.query(`INSERT INTO server_members (server_id, user_id) VALUES ($1::uuid,$2::uuid) ON CONFLICT DO NOTHING`, [sid, user.id])
+      if (sid) {
+         const rr = await pool.query(`SELECT id FROM roles WHERE server_id=$1::uuid AND name='Member' LIMIT 1`, [sid])
+         const rid = rr.rows[0]?.id as string | undefined
+         await pool.query(`INSERT INTO server_members (server_id, user_id, role_id) VALUES ($1::uuid,$2::uuid,$3::uuid) ON CONFLICT DO NOTHING`, [sid, user.id, rid || null])
+      }
     }
   } catch {}
   return { token, user: { id: user.id, username: user.username, email: user.email, displayName: user.display_name } }
@@ -194,6 +276,34 @@ app.get("/api/me", async (req) => {
       id: u.id, 
       username: u.username, 
       email: u.email, 
+      displayName: u.display_name,
+      bio: u.bio,
+      bannerColor: u.banner_color,
+      bannerUrl: u.banner_url,
+      avatarUrl: u.avatar_url,
+      status: u.status
+    } }
+  } catch {
+    return { error: "Unauthorized" }
+  }
+})
+
+app.get("/api/users/:id/profile", async (req) => {
+  const auth = (req.headers as any).authorization as string | undefined
+  if (!auth) return { error: "Unauthorized" }
+  const id = (req.params as any).id as string
+  try {
+    jwt.verify(auth.replace(/^Bearer\s+/i, ""), JWT_SECRET)
+    const r = await pool.query(
+      `SELECT id::text AS id, username, display_name, bio, banner_color, banner_url, avatar_url, status
+       FROM users WHERE id = $1::uuid`,
+      [id]
+    )
+    const u = r.rows[0]
+    if (!u) return { error: "User not found" }
+    return { user: { 
+      id: u.id, 
+      username: u.username, 
       displayName: u.display_name,
       bio: u.bio,
       bannerColor: u.banner_color,
@@ -283,6 +393,7 @@ function signToken(user: { id: string; username: string }) {
 }
 
 async function findUserByUsernameOrEmail(identifier: string) {
+  console.log("Finding user by:", identifier)
   const r = await pool.query(
     `SELECT id::text AS id, username, email, display_name, password_hash
      FROM users
@@ -299,14 +410,14 @@ app.get("/api/servers", async (req) => {
   try {
     const payload = jwt.verify(auth.replace(/^Bearer\s+/i, ""), JWT_SECRET) as any
     const r = await pool.query(
-      `SELECT servers.id::text AS id, servers.name
+      `SELECT servers.id::text AS id, servers.name, servers.icon_url AS "iconUrl", servers.banner_url AS "bannerUrl", servers.owner_id::text AS "ownerId"
        FROM server_members
        JOIN servers ON servers.id = server_members.server_id
        WHERE server_members.user_id = $1::uuid
        ORDER BY servers.name`,
       [payload.sub]
     )
-    const servers = r.rows as { id: string; name: string }[]
+    const servers = r.rows as { id: string; name: string; iconUrl?: string; bannerUrl?: string; ownerId: string }[]
     return { servers }
   } catch {
     return { servers: [] }
@@ -316,17 +427,34 @@ app.get("/api/servers", async (req) => {
 app.post("/api/servers", async (req) => {
   const auth = (req.headers as any).authorization as string | undefined
   const body = req.body as any
-  const { name } = body || {}
+  const { name, description, iconUrl, bannerUrl } = body || {}
   if (!auth || !name) return { error: "Bad request" }
   try {
     const payload = jwt.verify(auth.replace(/^Bearer\s+/i, ""), JWT_SECRET) as any
     const r = await pool.query(
-      `INSERT INTO servers (name, owner_id) VALUES ($1::text, $2::uuid)
-       RETURNING id::text AS id, name`,
-      [name, payload.sub]
+      `INSERT INTO servers (name, owner_id, description, icon_url, banner_url) VALUES ($1::text, $2::uuid, $3, $4, $5)
+       RETURNING id::text AS id, name, description, icon_url AS "iconUrl", banner_url AS "bannerUrl", owner_id::text AS "ownerId"`,
+      [name, payload.sub, description || null, iconUrl || null, bannerUrl || null]
     )
-    const s = r.rows[0] as { id: string; name: string }
-    await pool.query(`INSERT INTO server_members (server_id, user_id) VALUES ($1::uuid,$2::uuid) ON CONFLICT DO NOTHING`, [s.id, payload.sub])
+    const s = r.rows[0] as { id: string; name: string; ownerId: string }
+    
+    // Create default roles
+    const ownerRole = await pool.query(
+      `INSERT INTO roles (server_id, name, color, display_group, position, can_manage_channels, can_manage_server, can_manage_roles) 
+       VALUES ($1::uuid, 'Owner', '#ff0000', 'Owner', 0, true, true, true) RETURNING id`,
+      [s.id]
+    )
+    const memberRole = await pool.query(
+      `INSERT INTO roles (server_id, name, color, display_group, position, can_manage_channels, can_manage_server, can_manage_roles) 
+       VALUES ($1::uuid, 'Member', '#99aab5', 'Member', 1, false, false, false) RETURNING id`,
+      [s.id]
+    )
+    
+    await pool.query(
+      `INSERT INTO server_members (server_id, user_id, role_id) VALUES ($1::uuid,$2::uuid,$3::uuid) ON CONFLICT DO NOTHING`, 
+      [s.id, payload.sub, ownerRole.rows[0].id]
+    )
+    
     return { server: s }
   } catch {
     return { error: "Unauthorized" }
@@ -337,12 +465,30 @@ app.patch("/api/servers/:id", async (req) => {
   const auth = (req.headers as any).authorization as string | undefined
   const body = req.body as any
   const id = (req.params as any).id as string
-  const { name } = body || {}
-  if (!auth || !id || !name) return { error: "Bad request" }
+  const { name, description, iconUrl, bannerUrl } = body || {}
+  if (!auth || !id) return { error: "Bad request" }
   try {
-    jwt.verify(auth.replace(/^Bearer\s+/i, ""), JWT_SECRET)
-    const r = await pool.query(`UPDATE servers SET name=$2 WHERE id=$1::uuid RETURNING id::text AS id, name`, [id, name])
-    return { server: r.rows[0] as { id: string; name: string } }
+    const payload = jwt.verify(auth.replace(/^Bearer\s+/i, ""), JWT_SECRET) as any
+    const allowed = await checkPermission(payload.sub, id, 'can_manage_server')
+    if (!allowed) return { error: "Missing permissions" }
+    
+    const fields: string[] = []
+    const values: any[] = [id]
+    let idx = 2
+    
+    if (name !== undefined) { fields.push(`name=$${idx++}`); values.push(name) }
+    if (description !== undefined) { fields.push(`description=$${idx++}`); values.push(description) }
+    if (iconUrl !== undefined) { fields.push(`icon_url=$${idx++}`); values.push(iconUrl) }
+    if (bannerUrl !== undefined) { fields.push(`banner_url=$${idx++}`); values.push(bannerUrl) }
+    
+    if (fields.length === 0) return { error: "No fields" }
+    
+    const r = await pool.query(
+      `UPDATE servers SET ${fields.join(", ")} WHERE id=$1::uuid 
+       RETURNING id::text AS id, name, description, icon_url AS "iconUrl", banner_url AS "bannerUrl", owner_id::text AS "ownerId"`,
+      values
+    )
+    return { server: r.rows[0] as { id: string; name: string; iconUrl?: string; bannerUrl?: string; ownerId: string } }
   } catch {
     return { error: "Unauthorized" }
   }
@@ -353,9 +499,47 @@ app.delete("/api/servers/:id", async (req) => {
   const id = (req.params as any).id as string
   if (!auth || !id) return { error: "Bad request" }
   try {
-    jwt.verify(auth.replace(/^Bearer\s+/i, ""), JWT_SECRET)
+    const payload = jwt.verify(auth.replace(/^Bearer\s+/i, ""), JWT_SECRET) as any
+    const server = await pool.query('SELECT owner_id FROM servers WHERE id=$1::uuid', [id])
+    if (server.rows[0]?.owner_id !== payload.sub) return { error: "Unauthorized" }
     await pool.query(`DELETE FROM servers WHERE id=$1::uuid`, [id])
     return { ok: true }
+  } catch {
+    return { error: "Unauthorized" }
+  }
+})
+
+app.delete("/api/servers/:id/members/me", async (req) => {
+  const auth = (req.headers as any).authorization as string | undefined
+  const id = (req.params as any).id as string
+  if (!auth || !id) return { error: "Bad request" }
+  try {
+    const payload = jwt.verify(auth.replace(/^Bearer\s+/i, ""), JWT_SECRET) as any
+    
+    // Check if owner
+    const s = await pool.query(`SELECT owner_id FROM servers WHERE id=$1::uuid`, [id])
+    if (s.rows[0]?.owner_id === payload.sub) {
+        const mc = await pool.query(`SELECT count(*) as count FROM server_members WHERE server_id=$1::uuid`, [id])
+        if (parseInt(mc.rows[0].count) > 1) {
+            return { error: "Owner cannot leave server unless they are the last member. Please delete the server instead." }
+        }
+    }
+
+    await pool.query(`DELETE FROM server_members WHERE server_id=$1::uuid AND user_id=$2::uuid`, [id, payload.sub])
+    
+    // Check emptiness
+    const m = await pool.query(`SELECT count(*) as count FROM server_members WHERE server_id=$1::uuid`, [id])
+    const memberCount = parseInt(m.rows[0].count)
+    
+    const i = await pool.query(`SELECT count(*) as count FROM invites WHERE server_id=$1::uuid AND (expires_at IS NULL OR expires_at > now())`, [id])
+    const inviteCount = parseInt(i.rows[0].count)
+    
+    if (memberCount === 0 && inviteCount === 0) {
+      await pool.query(`DELETE FROM servers WHERE id=$1::uuid`, [id])
+      return { left: true, serverDeleted: true }
+    }
+    
+    return { left: true }
   } catch {
     return { error: "Unauthorized" }
   }
@@ -367,7 +551,9 @@ app.post("/api/channels", async (req) => {
   const { serverId, name, category } = body || {}
   if (!auth || !serverId || !name || !category) return { error: "Bad request" }
   try {
-    jwt.verify(auth.replace(/^Bearer\s+/i, ""), JWT_SECRET)
+    const payload = jwt.verify(auth.replace(/^Bearer\s+/i, ""), JWT_SECRET) as any
+    const allowed = await checkPermission(payload.sub, serverId, 'can_manage_channels')
+    if (!allowed) return { error: "Missing permissions" }
     const r = await pool.query(
       `INSERT INTO channels (server_id, name, category) VALUES ($1::uuid,$2::text,$3::text)
        RETURNING id::text AS id, name, category`,
@@ -386,7 +572,12 @@ app.patch("/api/channels/:id", async (req) => {
   const { name } = body || {}
   if (!auth || !id || !name) return { error: "Bad request" }
   try {
-    jwt.verify(auth.replace(/^Bearer\s+/i, ""), JWT_SECRET)
+    const payload = jwt.verify(auth.replace(/^Bearer\s+/i, ""), JWT_SECRET) as any
+    const c = await pool.query('SELECT server_id FROM channels WHERE id=$1::uuid', [id])
+    const serverId = c.rows[0]?.server_id
+    if (!serverId) return { error: "Not found" }
+    const allowed = await checkPermission(payload.sub, serverId, 'can_manage_channels')
+    if (!allowed) return { error: "Missing permissions" }
     const r = await pool.query(`UPDATE channels SET name=$2 WHERE id=$1::uuid RETURNING id::text AS id, name`, [id, name])
     return { channel: r.rows[0] as { id: string; name: string } }
   } catch {
@@ -399,7 +590,12 @@ app.delete("/api/channels/:id", async (req) => {
   const id = (req.params as any).id as string
   if (!auth || !id) return { error: "Bad request" }
   try {
-    jwt.verify(auth.replace(/^Bearer\s+/i, ""), JWT_SECRET)
+    const payload = jwt.verify(auth.replace(/^Bearer\s+/i, ""), JWT_SECRET) as any
+    const c = await pool.query('SELECT server_id FROM channels WHERE id=$1::uuid', [id])
+    const serverId = c.rows[0]?.server_id
+    if (!serverId) return { error: "Not found" }
+    const allowed = await checkPermission(payload.sub, serverId, 'can_manage_channels')
+    if (!allowed) return { error: "Missing permissions" }
     await pool.query(`DELETE FROM channels WHERE id=$1::uuid`, [id])
     return { ok: true }
   } catch {
@@ -456,19 +652,21 @@ app.get("/api/users", async (req: FastifyRequest<{ Querystring: { serverId?: str
   try {
     const serverId = req.query.serverId
     const r = await pool.query(
-      `SELECT roles.display_group AS title, 
+      `SELECT COALESCE(roles.display_group, 'Member') AS title, 
               json_agg(json_build_object(
+                'id', users.id,
                 'username', users.username, 
                 'displayName', users.display_name, 
                 'avatarUrl', users.avatar_url,
-                'status', users.status
+                'status', users.status,
+                'roleColor', roles.color
               ) ORDER BY users.username) AS users
        FROM server_members
-       JOIN roles ON roles.id = server_members.role_id
+       LEFT JOIN roles ON roles.id = server_members.role_id
        JOIN users ON users.id = server_members.user_id
        WHERE ($1::uuid IS NULL OR server_members.server_id = $1::uuid)
-       GROUP BY roles.display_group
-       ORDER BY roles.display_group`,
+       GROUP BY COALESCE(roles.display_group, 'Member')
+       ORDER BY COALESCE(MIN(roles.position), 999) ASC, title`,
       [serverId || null]
     )
     const groups = r.rows as { title: string; users: { username: string; displayName: string; avatarUrl: string; status: string }[] }[]
@@ -494,18 +692,21 @@ app.get("/api/messages", async (req: FastifyRequest<{ Querystring: { channel?: s
               users.avatar_url AS user_avatar,
               users.id::text AS user_id,
               messages.content AS text, 
-              messages.created_at AS ts
+              messages.created_at AS ts,
+              roles.color AS role_color
        FROM messages
        JOIN channels ON channels.id = messages.channel_id
        LEFT JOIN users ON users.id = messages.user_id
+       LEFT JOIN server_members ON server_members.user_id = messages.user_id AND server_members.server_id = channels.server_id
+       LEFT JOIN roles ON roles.id = server_members.role_id
        WHERE ($1::text IS NULL OR channels.name = $1::text)
          AND ($2::timestamptz IS NULL OR messages.created_at < $2::timestamptz)
        ORDER BY messages.created_at DESC
        LIMIT $3`,
       [channelName || null, before, limit]
     )
-    const rows = r.rows as { id: string; user: string | null; user_avatar: string | null; user_id: string | null; text: string; ts: string }[]
-    return { messages: rows.reverse().map(m => ({ id: m.id, user: m.user ?? "User", userAvatar: m.user_avatar, userId: m.user_id, text: m.text, ts: m.ts })) }
+    const rows = r.rows as { id: string; user: string | null; user_avatar: string | null; user_id: string | null; text: string; ts: string; role_color: string | null }[]
+    return { messages: rows.reverse().map(m => ({ id: m.id, user: m.user ?? "User", userAvatar: m.user_avatar, userId: m.user_id, text: m.text, ts: m.ts, roleColor: m.role_color || undefined })) }
   } catch (e) {
     console.error("GET /api/messages error:", e)
     const messages = Array.from({ length: 24 }).map((_, i) => ({ id: String(i), user: `User ${i % 5}`, text: `Message ${i + 1}` }))
@@ -536,10 +737,24 @@ app.post("/api/messages", async (req) => {
     )
     const sender = (ur.rows[0]?.name as string) || "User"
     const avatar = ur.rows[0]?.avatar_url as string | null
+    
+    let roleColor: string | undefined
     try {
-      await redis.publish("messages", JSON.stringify({ channel, data: { type: "message", channel, message: m, user: sender, userAvatar: avatar, userId: payload.sub } }))
+       const rc = await pool.query(
+         `SELECT roles.color 
+          FROM server_members 
+          JOIN channels ON channels.server_id = server_members.server_id
+          JOIN roles ON roles.id = server_members.role_id
+          WHERE channels.name = $1::text AND server_members.user_id = $2::uuid`,
+         [channel, payload.sub]
+       )
+       roleColor = rc.rows[0]?.color
     } catch {}
-    return { message: m }
+
+    try {
+      await redis.publish("messages", JSON.stringify({ channel, data: { type: "message", channel, message: m, user: sender, userAvatar: avatar, userId: payload.sub, roleColor } }))
+    } catch {}
+    return { message: { ...m, roleColor } }
   } catch (e) {
     console.error("POST /api/messages error:", e)
     return { error: `Unauthorized: ${e}` }
@@ -573,7 +788,9 @@ app.post("/api/categories", async (req) => {
   const { serverId, name } = body || {}
   if (!auth || !serverId || !name) return { error: "Bad request" }
   try {
-    jwt.verify(auth.replace(/^Bearer\s+/i, ""), JWT_SECRET)
+    const payload = jwt.verify(auth.replace(/^Bearer\s+/i, ""), JWT_SECRET) as any
+    const allowed = await checkPermission(payload.sub, serverId, 'can_manage_channels')
+    if (!allowed) return { error: "Missing permissions" }
     const r = await pool.query(
       `INSERT INTO channel_categories (server_id, name) VALUES ($1::uuid,$2::text)
        RETURNING id::text AS id, name`,
@@ -592,7 +809,12 @@ app.patch("/api/categories/:id", async (req) => {
   const { name } = body || {}
   if (!auth || !id || !name) return { error: "Bad request" }
   try {
-    jwt.verify(auth.replace(/^Bearer\s+/i, ""), JWT_SECRET)
+    const payload = jwt.verify(auth.replace(/^Bearer\s+/i, ""), JWT_SECRET) as any
+    const c = await pool.query('SELECT server_id FROM channel_categories WHERE id=$1::uuid', [id])
+    const serverId = c.rows[0]?.server_id
+    if (!serverId) return { error: "Not found" }
+    const allowed = await checkPermission(payload.sub, serverId, 'can_manage_channels')
+    if (!allowed) return { error: "Missing permissions" }
     const r = await pool.query(`UPDATE channel_categories SET name=$2 WHERE id=$1::uuid RETURNING id::text AS id, name`, [id, name])
     return { category: r.rows[0] as { id: string; name: string } }
   } catch {
@@ -605,8 +827,178 @@ app.delete("/api/categories/:id", async (req) => {
   const id = (req.params as any).id as string
   if (!auth || !id) return { error: "Bad request" }
   try {
-    jwt.verify(auth.replace(/^Bearer\s+/i, ""), JWT_SECRET)
+    const payload = jwt.verify(auth.replace(/^Bearer\s+/i, ""), JWT_SECRET) as any
+    const c = await pool.query('SELECT server_id FROM channel_categories WHERE id=$1::uuid', [id])
+    const serverId = c.rows[0]?.server_id
+    if (!serverId) return { error: "Not found" }
+    const allowed = await checkPermission(payload.sub, serverId, 'can_manage_channels')
+    if (!allowed) return { error: "Missing permissions" }
     await pool.query(`DELETE FROM channel_categories WHERE id=$1::uuid`, [id])
+    return { ok: true }
+  } catch {
+    return { error: "Unauthorized" }
+  }
+})
+
+async function checkPermission(userId: string, serverId: string, perm: string) {
+  if (!userId || !serverId) return false
+  const server = await pool.query(`SELECT owner_id FROM servers WHERE id=$1::uuid`, [serverId])
+  if (server.rows[0]?.owner_id === userId) return true
+
+  const r = await pool.query(
+    `SELECT roles.can_manage_channels, roles.can_manage_server, roles.can_manage_roles
+     FROM server_members 
+     JOIN roles ON roles.id = server_members.role_id 
+     WHERE server_members.user_id=$1::uuid AND server_members.server_id=$2::uuid`,
+    [userId, serverId]
+  )
+  const p = r.rows[0]
+  if (!p) return false
+  if (perm === 'can_manage_channels') return !!p.can_manage_channels
+  if (perm === 'can_manage_server') return !!p.can_manage_server
+  if (perm === 'can_manage_roles') return !!p.can_manage_roles
+  return false
+}
+
+app.get("/api/servers/:id/roles", async (req) => {
+  const auth = (req.headers as any).authorization as string | undefined
+  const id = (req.params as any).id as string
+  if (!auth || !id) return { error: "Bad request" }
+  try {
+    jwt.verify(auth.replace(/^Bearer\s+/i, ""), JWT_SECRET)
+    const r = await pool.query(`SELECT id::text AS id, name, color, position, can_manage_channels AS "canManageChannels", can_manage_server AS "canManageServer", can_manage_roles AS "canManageRoles" FROM roles WHERE server_id=$1::uuid ORDER BY position ASC, name ASC`, [id])
+    return { roles: r.rows }
+  } catch {
+    return { error: "Unauthorized" }
+  }
+})
+
+app.post("/api/servers/:id/roles", async (req) => {
+  const auth = (req.headers as any).authorization as string | undefined
+  const id = (req.params as any).id as string
+  const body = req.body as any
+  const { name, color, position, canManageChannels, canManageServer, canManageRoles } = body || {}
+  if (!auth || !id || !name) return { error: "Bad request" }
+  try {
+    const payload = jwt.verify(auth.replace(/^Bearer\s+/i, ""), JWT_SECRET) as any
+    const allowed = await checkPermission(payload.sub, id, 'can_manage_roles')
+    if (!allowed) return { error: "Missing permissions" }
+    
+    let pos = position
+    if (pos === undefined) {
+      const c = await pool.query(`SELECT count(*) as count FROM roles WHERE server_id=$1::uuid`, [id])
+      pos = parseInt(c.rows[0].count)
+    }
+
+    const r = await pool.query(
+      `INSERT INTO roles (server_id, name, color, display_group, position, can_manage_channels, can_manage_server, can_manage_roles)
+       VALUES ($1::uuid, $2::text, $3::text, $2::text, $4::integer, $5::boolean, $6::boolean, $7::boolean)
+       RETURNING id::text AS id, name, color, position, can_manage_channels AS "canManageChannels", can_manage_server AS "canManageServer", can_manage_roles AS "canManageRoles"`,
+      [id, name, color || '#99aab5', pos, canManageChannels || false, canManageServer || false, canManageRoles || false]
+    )
+    return { role: r.rows[0] }
+  } catch {
+    return { error: "Unauthorized" }
+  }
+})
+
+app.patch("/api/servers/:id/roles/:roleId", async (req) => {
+  const auth = (req.headers as any).authorization as string | undefined
+  const id = (req.params as any).id as string
+  const roleId = (req.params as any).roleId as string
+  const body = req.body as any
+  const { name, color, position, canManageChannels, canManageServer, canManageRoles } = body || {}
+  if (!auth || !id || !roleId) return { error: "Bad request" }
+  try {
+    const payload = jwt.verify(auth.replace(/^Bearer\s+/i, ""), JWT_SECRET) as any
+    const allowed = await checkPermission(payload.sub, id, 'can_manage_roles')
+    if (!allowed) return { error: "Missing permissions" }
+    
+    const fields: string[] = []
+    const values: any[] = [roleId]
+    let idx = 2
+    
+    if (name !== undefined) { fields.push(`name=$${idx++}`); values.push(name); fields.push(`display_group=$${idx-1}`) }
+    if (color !== undefined) { fields.push(`color=$${idx++}`); values.push(color) }
+    if (position !== undefined) { fields.push(`position=$${idx++}`); values.push(position) }
+    if (canManageChannels !== undefined) { fields.push(`can_manage_channels=$${idx++}`); values.push(canManageChannels) }
+    if (canManageServer !== undefined) { fields.push(`can_manage_server=$${idx++}`); values.push(canManageServer) }
+    if (canManageRoles !== undefined) { fields.push(`can_manage_roles=$${idx++}`); values.push(canManageRoles) }
+    
+    if (fields.length === 0) return { error: "No fields" }
+    
+    const r = await pool.query(
+      `UPDATE roles SET ${fields.join(", ")} WHERE id=$1::uuid 
+       RETURNING id::text AS id, name, color, position, can_manage_channels AS "canManageChannels", can_manage_server AS "canManageServer", can_manage_roles AS "canManageRoles"`,
+      values
+    )
+    return { role: r.rows[0] }
+  } catch {
+    return { error: "Unauthorized" }
+  }
+})
+
+app.patch("/api/servers/:id/members/:userId", async (req) => {
+  const auth = (req.headers as any).authorization as string | undefined
+  const id = (req.params as any).id as string
+  const userId = (req.params as any).userId as string
+  const body = req.body as any
+  const { roleId } = body || {}
+  if (!auth || !id || !userId) return { error: "Bad request" }
+  try {
+    const payload = jwt.verify(auth.replace(/^Bearer\s+/i, ""), JWT_SECRET) as any
+    const allowed = await checkPermission(payload.sub, id, 'can_manage_roles')
+    if (!allowed) return { error: "Missing permissions" }
+    
+    // Update role
+    await pool.query(
+      `UPDATE server_members SET role_id=$3::uuid WHERE server_id=$1::uuid AND user_id=$2::uuid`,
+      [id, userId, roleId || null]
+    )
+    return { ok: true }
+  } catch {
+    return { error: "Unauthorized" }
+  }
+})
+
+app.get("/api/servers/:id/members/:userId", async (req) => {
+  const auth = (req.headers as any).authorization as string | undefined
+  const id = (req.params as any).id as string
+  const userId = (req.params as any).userId as string
+  if (!auth || !id || !userId) return { error: "Bad request" }
+  try {
+    jwt.verify(auth.replace(/^Bearer\s+/i, ""), JWT_SECRET)
+    const r = await pool.query(
+      `SELECT server_members.role_id as "roleId", roles.name as "roleName", roles.color as "roleColor", roles.can_manage_roles as "canManageRoles"
+       FROM server_members 
+       LEFT JOIN roles ON roles.id = server_members.role_id 
+       WHERE server_members.server_id=$1::uuid AND server_members.user_id=$2::uuid`,
+      [id, userId]
+    )
+    return { member: r.rows[0] }
+  } catch {
+    return { error: "Unauthorized" }
+  }
+})
+
+app.delete("/api/servers/:id/roles/:roleId", async (req) => {
+  const auth = (req.headers as any).authorization as string | undefined
+  const id = (req.params as any).id as string
+  const roleId = (req.params as any).roleId as string
+  if (!auth || !id || !roleId) return { error: "Bad request" }
+  try {
+    const payload = jwt.verify(auth.replace(/^Bearer\s+/i, ""), JWT_SECRET) as any
+    const allowed = await checkPermission(payload.sub, id, 'can_manage_roles')
+    if (!allowed) return { error: "Missing permissions" }
+    
+    // Prevent deleting 'Owner' role or 'Member' role if critical? 
+    // For now just allow delete, but maybe warn or block specific names?
+    // The prompt says "create 2 roles... Owner and Member". "Owner... is the only person...".
+    // Let's block deleting "Owner" role just in case.
+    const role = await pool.query(`SELECT name FROM roles WHERE id=$1::uuid`, [roleId])
+    if (role.rows[0]?.name === 'Owner') return { error: "Cannot delete Owner role" }
+    
+    await pool.query(`DELETE FROM roles WHERE id=$1::uuid`, [roleId])
     return { ok: true }
   } catch {
     return { error: "Unauthorized" }
@@ -660,7 +1052,12 @@ app.post("/api/invites/:code/accept", async (req) => {
     const inv = r.rows[0] as { server_id: string; expires_at: string | null; max_uses: number | null; uses: number }
     if (inv.expires_at && new Date(inv.expires_at).getTime() < Date.now()) return { error: "Invite expired" }
     if (inv.max_uses && inv.uses >= inv.max_uses) return { error: "Invite limit reached" }
-    await pool.query(`INSERT INTO server_members (server_id, user_id) VALUES ($1::uuid,$2::uuid) ON CONFLICT DO NOTHING`, [inv.server_id, payload.sub])
+    
+    // Find Member role
+    const rr = await pool.query(`SELECT id FROM roles WHERE server_id=$1::uuid AND name='Member' LIMIT 1`, [inv.server_id])
+    const roleId = rr.rows[0]?.id
+    
+    await pool.query(`INSERT INTO server_members (server_id, user_id, role_id) VALUES ($1::uuid,$2::uuid,$3::uuid) ON CONFLICT DO NOTHING`, [inv.server_id, payload.sub, roleId || null])
     await pool.query(`UPDATE invites SET uses = COALESCE(uses,0) + 1 WHERE code=$1::text`, [code])
     return { ok: true }
   } catch {

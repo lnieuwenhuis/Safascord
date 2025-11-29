@@ -1,14 +1,12 @@
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Headphones, Mic, Cog, Pencil, Circle, MinusCircle, Moon, Disc, ChevronDown, ChevronUp, Check, Image as ImageIcon, Loader2 } from "lucide-react"
+import { Headphones, Mic, Cog, Pencil, Circle, MinusCircle, Moon, Disc, ChevronDown, ChevronUp, Check, Image as ImageIcon, Loader2, UserPlus, MessageSquare } from "lucide-react"
 import { useState, useEffect } from "react"
 import UserSettings from "./UserSettings"
 import { useAuth } from "@/hooks/useAuth"
 import { cn } from "@/lib/utils"
 import { api, getFullUrl } from "@/lib/api"
-
-// Mock type for status
-type UserStatus = "online" | "idle" | "dnd" | "invisible"
+import type { UserStatus, Role } from "@/types"
 
 const statusConfig = {
   online: { label: "Online", color: "bg-green-500", icon: Circle, description: "Online" },
@@ -26,12 +24,21 @@ interface ProfileCardProps {
   bannerColor: string
   status: UserStatus
   isPremium: boolean
+  roles?: Role[]
   className?: string
+  discriminator?: string
+  friendshipStatus?: 'none' | 'friends' | 'outgoing' | 'incoming' | 'blocked'
+  allowDmsFromStrangers?: boolean
+  isMe?: boolean
+  
   onEditProfile?: () => void
   onStatusChange?: (status: UserStatus) => void
+  onAddFriend?: () => void
+  onAcceptFriend?: () => void
+  onDM?: () => void
 }
 
-function ProfileCard({
+export function ProfileCard({
   displayName,
   username,
   bio,
@@ -40,9 +47,17 @@ function ProfileCard({
   bannerColor,
   status,
   isPremium,
+  roles,
   className,
+  discriminator,
+  friendshipStatus,
+  allowDmsFromStrangers,
+  isMe,
   onEditProfile,
   onStatusChange,
+  onAddFriend,
+  onAcceptFriend,
+  onDM,
 }: ProfileCardProps) {
   const [statusDropdownOpen, setStatusDropdownOpen] = useState(false)
 
@@ -99,7 +114,10 @@ function ProfileCard({
 
         <div className="mt-14 space-y-1">
           <div className="text-xl font-bold leading-none">{displayName}</div>
-          <div className="text-sm font-medium text-muted-foreground">{username}</div>
+          <div className="text-sm font-medium text-muted-foreground">
+            {username}
+            {discriminator && <span className="opacity-70">#{discriminator}</span>}
+          </div>
         </div>
 
         <div className="mt-3 text-sm whitespace-pre-wrap break-words">
@@ -108,8 +126,52 @@ function ProfileCard({
 
         {/* Separator */}
         <div className="my-3 h-[1px] bg-border" />
+        
+        {/* Role Section */}
+        {roles && roles.length > 0 && (
+          <div className="mb-3">
+            <div className="text-xs font-bold uppercase text-muted-foreground mb-1">Roles</div>
+            <div className="flex flex-wrap gap-1">
+               {roles.map(role => (
+                 <div key={role.id} className="flex items-center gap-1 bg-secondary/50 rounded px-1.5 py-0.5">
+                    <div className="h-2 w-2 rounded-full" style={{ backgroundColor: role.color }} />
+                    <span className="text-xs font-medium">{role.name}</span>
+                 </div>
+               ))}
+            </div>
+          </div>
+        )}
+
+        {/* Action Buttons */}
+        {!isMe && (
+          <div className="mb-3 flex gap-2">
+             {(friendshipStatus === 'friends' || allowDmsFromStrangers) && (
+                <Button className="flex-1 h-8 text-xs" onClick={onDM}>
+                   <MessageSquare className="mr-2 h-3 w-3" />
+                   Message
+                </Button>
+             )}
+             {friendshipStatus === 'none' && (
+                <Button className="flex-1 h-8 text-xs" variant="secondary" onClick={onAddFriend}>
+                   <UserPlus className="mr-2 h-3 w-3" />
+                   Add Friend
+                </Button>
+             )}
+             {friendshipStatus === 'outgoing' && (
+                <Button className="flex-1 h-8 text-xs" variant="secondary" disabled>
+                   Request Sent
+                </Button>
+             )}
+             {friendshipStatus === 'incoming' && (
+                <Button className="flex-1 h-8 text-xs bg-green-600 hover:bg-green-700 text-white" onClick={onAcceptFriend}>
+                   Accept Request
+                </Button>
+             )}
+          </div>
+        )}
 
         {/* Status Picker Dropdown */}
+        {onStatusChange && (
         <div className="relative mb-2">
            <button 
              className="flex w-full items-center justify-between rounded-md p-2 hover:bg-accent/50 transition-colors border border-transparent hover:border-border"
@@ -149,8 +211,10 @@ function ProfileCard({
              </>
            )}
         </div>
+        )}
 
         {/* Edit Profile Button */}
+        {onEditProfile && (
         <button 
           className="flex w-full items-center justify-center gap-2 rounded-md bg-secondary/80 px-2 py-1.5 text-sm font-medium transition-colors hover:bg-secondary"
           onClick={onEditProfile}
@@ -159,6 +223,7 @@ function ProfileCard({
           <Pencil className="h-3.5 w-3.5" />
           Edit Profile
         </button>
+        )}
       </div>
     </div>
   )

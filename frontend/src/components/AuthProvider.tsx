@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useEffect, useState, useCallback } from "react"
-import { api, type User } from "../lib/api"
+import { api } from "../lib/api"
+import type { User } from "../types"
 
 interface AuthContextType {
   isAuthenticated: boolean
@@ -9,6 +10,7 @@ interface AuthContextType {
   checkSession: () => Promise<void>
   updateUser: (user: User) => void
   isLoading: boolean
+  token?: string | null
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
@@ -84,8 +86,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return () => clearInterval(interval)
   }, [isAuthenticated, checkSession])
 
+  const token = isAuthenticated ? localStorage.getItem("token") : null
+
   return (
-    <AuthContext.Provider value={{ isAuthenticated, user, login, logout, checkSession, updateUser, isLoading }}>
+    <AuthContext.Provider value={{ isAuthenticated, user, login, logout, checkSession, updateUser, isLoading, token }}>
       {children}
     </AuthContext.Provider>
   )

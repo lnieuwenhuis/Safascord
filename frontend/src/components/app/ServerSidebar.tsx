@@ -2,23 +2,32 @@ import { Button } from "@/components/ui/button"
 import { useNavigate } from "react-router-dom"
 import { setSelection } from "@/hooks/useSelection"
 import { useEffect, useState } from "react"
-import { api } from "@/lib/api"
+import { api, getFullUrl } from "@/lib/api"
 import ConfirmDialog from "./ConfirmDialog"
-import { Input } from "@/components/ui/input"
+import CreateServerModal from "./CreateServerModal"
+import EditServerModal from "./EditServerModal"
+import type { Server } from "@/types"
 
 export default function ServerSidebar() {
   const navigate = useNavigate()
-  const [servers, setServers] = useState<{ id: string; name: string }[]>([])
+  const [servers, setServers] = useState<Server[]>([])
   const [menu, setMenu] = useState<{ id: string; x: number; y: number } | null>(null)
   const [editOpen, setEditOpen] = useState(false)
-  const [editName, setEditName] = useState("")
+  const [createOpen, setCreateOpen] = useState(false)
   const [editId, setEditId] = useState<string | null>(null)
   const [confirmOpen, setConfirmOpen] = useState(false)
-  const [confirmAction, setConfirmAction] = useState<"rename" | "delete" | null>(null)
+  const [leaveOpen, setLeaveOpen] = useState(false)
+  const [userId, setUserId] = useState<string | null>(null)
   const token = typeof window !== "undefined" ? localStorage.getItem("token") || "" : ""
+
   useEffect(() => {
-    api.servers(token).then((r) => setServers(r.servers)).catch(() => setServers([]))
+    if (token) {
+      api.me(token).then(r => setUserId(r.user?.id || null)).catch(() => {})
+      api.servers(token).then((r) => setServers(r.servers)).catch(() => setServers([]))
+    }
   }, [token])
+
+  const activeServer = editId ? servers.find(s => s.id === editId) || null : null
   return (
     <aside className="flex h-dvh w-16 flex-col items-center gap-3 overflow-y-auto overflow-x-hidden border-r border-border bg-background px-2 py-3">
       <Button
@@ -33,7 +42,7 @@ export default function ServerSidebar() {
       {servers.map(s => (
         <button
           key={s.id}
-          className="flex h-12 w-12 items-center justify-center rounded-2xl bg-card text-xs hover:bg-card/80"
+          className="flex h-12 w-12 items-center justify-center rounded-2xl bg-card text-xs hover:bg-card/80 overflow-hidden"
           onClick={() => {
             setSelection({ serverId: String(s.id), channelId: undefined })
             navigate('/server')
@@ -41,54 +50,77 @@ export default function ServerSidebar() {
           onContextMenu={(e) => {
             e.preventDefault()
             setMenu({ id: s.id, x: e.clientX, y: e.clientY })
-            setEditName(s.name)
             setEditId(s.id)
           }}
         >
-          {s.name}
+          {s.iconUrl ? (
+            <img src={getFullUrl(s.iconUrl) || s.iconUrl} alt={s.name} className="h-full w-full object-cover" />
+          ) : (
+            s.name.substring(0, 2)
+          )}
         </button>
       ))}
       {menu && (
         <div className="fixed z-[120] rounded border border-border bg-popover shadow-md text-popover-foreground" style={{ left: menu.x, top: menu.y }} onMouseLeave={() => setMenu(null)}>
-          <button className="block w-40 px-3 py-2 text-left hover:bg-accent hover:text-accent-foreground text-sm" onClick={() => { setEditOpen(true); setMenu(null); setConfirmAction("rename") }}>Edit name</button>
-          <button className="block w-40 px-3 py-2 text-left hover:bg-accent hover:text-accent-foreground text-sm text-destructive" onClick={() => { setConfirmOpen(true); setMenu(null); setConfirmAction("delete") }}>Delete server</button>
-        </div>
-      )}
-      {editOpen && (
-        <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/60 backdrop-blur-sm supports-[backdrop-filter]:bg-black/50 p-4" onClick={() => setEditOpen(false)}>
-          <div className="w-[420px] rounded-lg border border-border bg-card p-4 shadow-xl text-card-foreground" onClick={(e) => e.stopPropagation()}>
-            <div className="text-lg font-semibold">Edit server name</div>
-            <div className="mt-2"><Input value={editName} onChange={(e) => setEditName(e.target.value)} /></div>
-            <div className="mt-6 flex items-center justify-end gap-2">
-              <Button variant="outline" onClick={() => setEditOpen(false)}>Cancel</Button>
-              <Button variant="brand" onClick={() => { setEditOpen(false); setConfirmOpen(true); setConfirmAction("rename") }}>Save</Button>
-            </div>
-          </div>
+          {menu.id === "__home__" ? (
+             <button className="block w-40 px-3 py-2 text-left hover:bg-accent hover:text-accent-foreground text-sm" onClick={() => { setCreateOpen(true); setMenu(null) }}>Create Server</button>
+          ) : (
+            <>
+              {servers.find(s => s.id === menu.id)?.ownerId === userId ? (
+                <>
+                  <button className="block w-40 px-3 py-2 text-left hover:bg-accent hover:text-accent-foreground text-sm" onClick={() => { setEditOpen(true); setEditId(menu.id) }}>Edit Server</button>
+                  <button className="block w-40 px-3 py-2 text-left hover:bg-accent hover:text-accent-foreground text-sm text-destructive" onClick={() => { setConfirmOpen(true); setEditId(menu.id) }}>Delete Server</button>
+                </>
+              ) : (
+                <button className="block w-40 px-3 py-2 text-left hover:bg-accent hover:text-accent-foreground text-sm text-destructive" onClick={() => { setLeaveOpen(true); setEditId(menu.id) }}>Leave Server</button>
+              )}
+            </>
+          )}
         </div>
       )}
       <ConfirmDialog
         open={confirmOpen}
-        title={confirmAction === "delete" ? "Delete server" : "Confirm edit"}
-        description={confirmAction === "delete" ? "This will remove the server and all its channels." : (editId ? `Rename server to "${editName}"?` : `Create server named "${editName || 'new-server'}"?`)}
+        title="Delete server"
+        description="This will remove the server and all its channels."
         onCancel={() => setConfirmOpen(false)}
         onConfirm={async () => {
           setConfirmOpen(false)
           if (!token) return
-          if (confirmAction === "delete" && editId) {
+          if (editId) {
             await api.deleteServer(token, editId)
             setServers((prev) => prev.filter((x) => x.id !== editId))
-          } else if (confirmAction === "rename" && editId) {
-            const r = await api.renameServer(token, editId, editName)
-            if (r.server) setServers((prev) => prev.map((x) => x.id === editId ? { ...x, name: r.server!.name } : x))
-          } else if (confirmAction === "rename" && !editId) {
-            const r = await api.createServer(token, editName || "new-server")
-            if (r.server) setServers((prev) => [...prev, r.server!])
+          }
+        }}
+      />
+      <ConfirmDialog
+        open={leaveOpen}
+        title="Leave Server"
+        description="Are you sure you want to leave this server?"
+        onCancel={() => setLeaveOpen(false)}
+        onConfirm={async () => {
+          setLeaveOpen(false)
+          if (!token || !editId) return
+          const res = await api.leaveServer(token, editId)
+          if (res.left) {
+            setServers((prev) => prev.filter((x) => x.id !== editId))
+            navigate('/channels/@me')
           }
         }}
       />
       <div className="mt-2">
-        <button className="flex h-12 w-12 items-center justify-center rounded-2xl bg-card text-xl hover:bg-card/80" onClick={() => { setEditId(null); setEditName(""); setConfirmAction("rename"); setEditOpen(true) }}>+</button>
+        <button className="flex h-12 w-12 items-center justify-center rounded-2xl bg-card text-xl hover:bg-card/80" onClick={() => setCreateOpen(true)}>+</button>
       </div>
+      <CreateServerModal 
+        open={createOpen} 
+        onClose={() => setCreateOpen(false)} 
+        onCreated={(s) => setServers((prev) => [...prev, s])} 
+      />
+      <EditServerModal
+        open={editOpen}
+        onClose={() => setEditOpen(false)}
+        onUpdated={(s) => setServers((prev) => prev.map((x) => x.id === s.id ? s : x))}
+        initialData={activeServer}
+      />
     </aside>
   )
 }

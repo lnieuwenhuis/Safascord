@@ -10,6 +10,7 @@ import Discover from "./pages/Discover"
 import Settings from "./pages/Settings"
 import Profile from "./pages/Profile"
 import Onboarding from "./pages/Onboarding"
+import Invite from "./pages/Invite"
 import NotFound from "./pages/NotFound"
 import ProtectedRoute from "./components/routes/ProtectedRoute"
 
@@ -73,6 +74,7 @@ export default function App() {
         <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
         <Route path="/profile" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
         <Route path="/onboarding" element={<ProtectedRoute><Onboarding /></ProtectedRoute>} />
+        <Route path="/invite/:code" element={<Invite />} />
         <Route path="/404" element={<NotFound />} />
         <Route path="*" element={<Navigate to="/404" replace />} />
       </Routes>

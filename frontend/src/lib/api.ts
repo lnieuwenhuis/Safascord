@@ -1,3 +1,26 @@
+import type { 
+  AuthResponse, 
+  UserResponse,  
+  ServersResponse, 
+  ChannelsResponse, 
+  UsersListResponse, 
+  MessagesResponse, 
+  SocketInfoResponse, 
+  MessageResponse, 
+  ServerResponse, 
+  BasicResponse, 
+  RolesResponse, 
+  RoleResponse, 
+  ChannelResponse, 
+  CategoryResponse, 
+  InviteResponse, 
+  FileUploadResponse,
+  FriendResponse,
+  FriendRequestsResponse,
+  DMsResponse,
+  DMResponse
+} from "@/types"
+
 export const API_BASE = import.meta.env.VITE_API_BASE || "http://localhost/api"
 export const WS_BASE = import.meta.env.VITE_WS_BASE || "ws://localhost/ws"
 
@@ -9,20 +32,6 @@ export function getFullUrl(url: string | null | undefined): string | null {
   }
   return `${API_BASE}${url}`
 }
-
-export type User = { 
-  id: string; 
-  username: string; 
-  email?: string | null; 
-  displayName?: string | null;
-  bio?: string | null;
-  bannerColor?: string | null;
-  bannerUrl?: string | null;
-  avatarUrl?: string | null;
-  status?: string | null;
-}
-export type AuthResponse = { token?: string; user?: User; error?: string; isNew?: boolean }
-export type UserResponse = { user?: User; error?: string }
 
 async function request<T>(path: string, opts?: RequestInit): Promise<T> {
   const res = await fetch(`${API_BASE}${path}`, opts)
@@ -38,13 +47,13 @@ async function get<T>(path: string, opts?: RequestInit): Promise<T> {
 }
 
 export const api = {
-  servers: (token?: string) => get<{ servers: { id: string; name: string }[] }>("/servers", token ? { headers: { Authorization: `Bearer ${token}` } } : undefined),
-  channels: (serverId?: string) => get<{ sections: { title: string; channels: string[] }[] }>(`/channels${serverId ? `?serverId=${serverId}` : ""}`),
-  users: (serverId?: string) => get<{ groups: { title: string; users: { username: string; displayName: string; avatarUrl: string; status: string }[] }[] }>(`/users${serverId ? `?serverId=${serverId}` : ""}`),
-  messages: (channel: string, limit = 50, before?: string) => get<{ messages: { id: string; user: string; userAvatar?: string; userId?: string; text: string; ts: string }[] }>(`/messages?channel=${encodeURIComponent(channel)}&limit=${limit}${before ? `&before=${encodeURIComponent(before)}` : ""}`),
-  socketInfo: (channel: string) => get<{ exists: boolean; wsUrl: string }>(`/socket-info?channel=${encodeURIComponent(channel)}`),
+  servers: (token?: string) => get<ServersResponse>("/servers", token ? { headers: { Authorization: `Bearer ${token}` } } : undefined),
+  channels: (serverId?: string) => get<ChannelsResponse>(`/channels${serverId ? `?serverId=${serverId}` : ""}`),
+  users: (serverId?: string) => get<UsersListResponse>(`/users${serverId ? `?serverId=${serverId}` : ""}`),
+  messages: (channel: string, limit = 50, before?: string) => get<MessagesResponse>(`/messages?channel=${encodeURIComponent(channel)}&limit=${limit}${before ? `&before=${encodeURIComponent(before)}` : ""}`),
+  socketInfo: (channel: string) => get<SocketInfoResponse>(`/socket-info?channel=${encodeURIComponent(channel)}`),
   sendMessage: async (token: string, channel: string, content: string) => {
-    return request<{ message: { id: string; text: string; ts: string } }>("/messages", {
+    return request<MessageResponse>("/messages", {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
       body: JSON.stringify({ channel, content }),
@@ -82,78 +91,153 @@ export const api = {
       body: JSON.stringify({ displayName }),
     })
   },
-  createServer: async (token: string, name: string) => {
-    return request<{ server?: { id: string; name: string }; error?: string }>("/servers", {
+  createServer: async (token: string, name: string, description?: string, iconUrl?: string, bannerUrl?: string) => {
+    return request<ServerResponse>("/servers", {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ name }),
+      body: JSON.stringify({ name, description, iconUrl, bannerUrl }),
     })
   },
-  renameServer: async (token: string, id: string, name: string) => {
-    return request<{ server?: { id: string; name: string }; error?: string }>(`/servers/${id}`, {
+  renameServer: async (token: string, id: string, name?: string, description?: string, iconUrl?: string, bannerUrl?: string) => {
+    return request<ServerResponse>(`/servers/${id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ name }),
+      body: JSON.stringify({ name, description, iconUrl, bannerUrl }),
     })
   },
   deleteServer: async (token: string, id: string) => {
-    return request<{ ok?: boolean; error?: string }>(`/servers/${id}`, {
+    return request<BasicResponse>(`/servers/${id}`, {
       method: "DELETE",
       headers: { Authorization: `Bearer ${token}` },
     })
   },
+  leaveServer: async (token: string, id: string) => {
+    return request<BasicResponse>(`/servers/${id}/members/me`, {
+      method: "DELETE",
+      headers: { Authorization: `Bearer ${token}` },
+    })
+  },
+  getRoles: async (token: string, serverId: string) => {
+    return request<RolesResponse>(`/servers/${serverId}/roles`, {
+      headers: { Authorization: `Bearer ${token}` }
+    })
+  },
+  createRole: async (token: string, serverId: string, data: { name: string; color: string; canManageChannels: boolean; canManageServer: boolean; canManageRoles: boolean; position?: number }) => {
+    return request<RoleResponse>(`/servers/${serverId}/roles`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      body: JSON.stringify(data)
+    })
+  },
+  updateRole: async (token: string, serverId: string, roleId: string, data: { name?: string; color?: string; position?: number; canManageChannels?: boolean; canManageServer?: boolean; canManageRoles?: boolean }) => {
+    return request<RoleResponse>(`/servers/${serverId}/roles/${roleId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      body: JSON.stringify(data)
+    })
+  },
+  updateMemberRole: async (token: string, serverId: string, userId: string, roleId: string) => {
+    return request<BasicResponse>(`/servers/${serverId}/members/${userId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ roleId })
+    })
+  },
+  updateMemberRoles: async (token: string, serverId: string, userId: string, roles: string[]) => {
+    return request<BasicResponse>(`/servers/${serverId}/members/${userId}/roles`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ roles })
+    })
+  },
+  getMember: async (token: string, serverId: string, userId: string) => {
+    return request<{ member: { roleId: string; roleName: string; roleColor: string; canManageRoles: boolean; roles?: { id: string; name: string; color: string; position: number }[] } | null }>(`/servers/${serverId}/members/${userId}`, {
+      headers: { Authorization: `Bearer ${token}` }
+    })
+  },
+  getServerMembers: async (token: string, serverId: string) => {
+    return request<{ members: { id: string; username: string; discriminator: string; displayName: string; avatarUrl: string; roles: string[]; muted: boolean }[] }>(`/servers/${serverId}/members`, {
+      headers: { Authorization: `Bearer ${token}` }
+    })
+  },
+  kickMember: async (token: string, serverId: string, userId: string) => {
+    return request<BasicResponse>(`/servers/${serverId}/members/${userId}/kick`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}` }
+    })
+  },
+  banMember: async (token: string, serverId: string, userId: string) => {
+    return request<BasicResponse>(`/servers/${serverId}/members/${userId}/ban`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ userId })
+    })
+  },
+  muteMember: async (token: string, serverId: string, userId: string, muted: boolean) => {
+    return request<BasicResponse>(`/servers/${serverId}/members/${userId}/mute`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ muted })
+    })
+  },
+  deleteRole: async (token: string, serverId: string, roleId: string) => {
+    return request<BasicResponse>(`/servers/${serverId}/roles/${roleId}`, {
+      method: "DELETE",
+      headers: { Authorization: `Bearer ${token}` }
+    })
+  },
   createChannel: async (token: string, serverId: string, name: string, category: string) => {
-    return request<{ channel?: { id: string; name: string; category: string }; error?: string }>("/channels", {
+    return request<ChannelResponse>("/channels", {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
       body: JSON.stringify({ serverId, name, category }),
     })
   },
   renameChannel: async (token: string, id: string, name: string) => {
-    return request<{ channel?: { id: string; name: string }; error?: string }>(`/channels/${id}`, {
+    return request<ChannelResponse>(`/channels/${id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
       body: JSON.stringify({ name }),
     })
   },
   deleteChannel: async (token: string, id: string) => {
-    return request<{ ok?: boolean; error?: string }>(`/channels/${id}`, {
+    return request<BasicResponse>(`/channels/${id}`, {
       method: "DELETE",
       headers: { Authorization: `Bearer ${token}` },
     })
   },
   createCategory: async (token: string, serverId: string, name: string) => {
-    return request<{ category?: { id: string; name: string }; error?: string }>("/categories", {
+    return request<CategoryResponse>("/categories", {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
       body: JSON.stringify({ serverId, name }),
     })
   },
   renameCategory: async (token: string, id: string, name: string) => {
-    return request<{ category?: { id: string; name: string }; error?: string }>(`/categories/${id}`, {
+    return request<CategoryResponse>(`/categories/${id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
       body: JSON.stringify({ name }),
     })
   },
   deleteCategory: async (token: string, id: string) => {
-    return request<{ ok?: boolean; error?: string }>(`/categories/${id}`, {
+    return request<BasicResponse>(`/categories/${id}`, {
       method: "DELETE",
       headers: { Authorization: `Bearer ${token}` },
     })
   },
   createInvite: async (token: string, serverId: string, opts?: { expiresInSeconds?: number; maxUses?: number }) => {
-    return request<{ code?: string; error?: string }>(`/servers/${serverId}/invites`, {
+    return request<InviteResponse>(`/servers/${serverId}/invites`, {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
       body: JSON.stringify(opts || {}),
     })
   },
   inviteInfo: async (code: string) => {
-    return request<{ invite?: { code: string; serverId: string; serverName: string; expired: boolean; full: boolean } }>(`/invites/${code}`)
+    return request<InviteResponse>(`/invites/${code}`)
   },
   acceptInvite: async (token: string, code: string) => {
-    return request<{ ok?: boolean; error?: string }>(`/invites/${code}/accept`, {
+    return request<BasicResponse>(`/invites/${code}/accept`, {
       method: "POST",
       headers: { Authorization: `Bearer ${token}` },
     })
@@ -162,7 +246,7 @@ export const api = {
   uploadFile: async (token: string, file: File) => {
     const formData = new FormData()
     formData.append("file", file)
-    return request<{ url: string; error?: string }>("/upload", {
+    return request<FileUploadResponse>("/upload", {
       method: "POST",
       headers: { Authorization: `Bearer ${token}` },
       body: formData,
@@ -175,4 +259,38 @@ export const api = {
       body: JSON.stringify(data),
     })
   },
+  getUserProfile: (token: string, userId: string) => get<UserResponse>(`/users/${userId}/profile`, { headers: { Authorization: `Bearer ${token}` } }),
+  
+  // Friend System
+  getFriends: (token: string) => get<FriendResponse>("/friends", { headers: { Authorization: `Bearer ${token}` } }),
+  getFriendRequests: (token: string) => get<FriendRequestsResponse>("/friends/requests", { headers: { Authorization: `Bearer ${token}` } }),
+  sendFriendRequest: async (token: string, data: { username?: string; userId?: string }) => {
+    return request<{ status?: string; error?: string }>("/friends/request", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      body: JSON.stringify(data)
+    })
+  },
+  respondFriendRequest: async (token: string, requestId: string, action: 'accept' | 'decline') => {
+    return request<BasicResponse>(`/friends/requests/${requestId}/${action}`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}` }
+    })
+  },
+  removeFriend: async (token: string, friendId: string) => {
+    return request<BasicResponse>(`/friends/${friendId}`, {
+      method: "DELETE",
+      headers: { Authorization: `Bearer ${token}` }
+    })
+  },
+  
+  // DM System
+  getDMs: (token: string) => get<DMsResponse>("/dms", { headers: { Authorization: `Bearer ${token}` } }),
+  createDM: async (token: string, userId: string) => {
+    return request<DMResponse>("/dms", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ userId })
+    })
+  }
 }

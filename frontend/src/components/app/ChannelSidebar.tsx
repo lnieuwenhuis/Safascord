@@ -3,14 +3,15 @@ import { useNavigate } from "react-router-dom"
 import { setSelection } from "@/hooks/useSelection"
 import { Hash, Plus } from "lucide-react"
 import { useEffect, useState } from "react"
-import { api } from "@/lib/api"
+import { api, getFullUrl } from "@/lib/api"
 import ConfirmDialog from "./ConfirmDialog"
 import { Input } from "@/components/ui/input"
+import type { Server, ChannelSection } from "@/types"
 
 export default function ChannelSidebar({ guildId, activeChannelId }: { guildId?: string, activeChannelId?: string }) {
   const navigate = useNavigate()
-  const [sections, setSections] = useState<{ title: string; channels: string[] }[]>([])
-  const [serverName, setServerName] = useState<string>("")
+  const [sections, setSections] = useState<ChannelSection[]>([])
+  const [server, setServer] = useState<Server | null>(null)
   const [menu, setMenu] = useState<{ channel: string; x: number; y: number } | null>(null)
   const [editOpen, setEditOpen] = useState(false)
   const [editName, setEditName] = useState("")
@@ -31,14 +32,20 @@ export default function ChannelSidebar({ guildId, activeChannelId }: { guildId?:
     if (!guildId) return
     api.servers(token).then((r) => {
       const s = r.servers.find((x) => String(x.id) === String(guildId))
-      setServerName(s?.name || "")
-    }).catch(() => setServerName(""))
+      setServer(s || null)
+    }).catch(() => setServer(null))
   }, [guildId, token])
   return (
     <aside className="flex h-dvh w-full flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground">
+      {server?.bannerUrl && (
+        <div className="w-full h-32 relative">
+           <img src={getFullUrl(server.bannerUrl) || server.bannerUrl} alt="Banner" className="w-full h-full object-cover" />
+           <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
+        </div>
+      )}
       <div className="px-3 py-3">
         <div className="mb-3 flex items-center justify-between px-2">
-          <div className="text-sm font-semibold">{serverName}</div>
+          <div className="text-sm font-semibold">{server?.name}</div>
           <div className="relative">
             <button className="flex h-6 w-6 items-center justify-center rounded bg-white/10" onClick={(e) => {
               e.preventDefault();

@@ -7,6 +7,6 @@ export default function DMChannel() {
   const sel = getSelection()
   const id = dmId ?? sel.dmId
   if (dmId && dmId !== sel.dmId) setSelection({ dmId })
-  const channelName = id ? `DM · ${id}` : "Direct Messages"
+  const channelName = id || "Direct Messages"
   return <AppShell variant="dm" channelName={channelName} />
 }
