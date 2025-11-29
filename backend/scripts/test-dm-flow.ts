@@ -55,7 +55,7 @@ async function run() {
           [id1, id2]
         )
         
-        if (check.rowCount > 0) {
+        if (check.rowCount && check.rowCount > 0) {
             console.log("DM already exists (unexpected):", check.rows[0].id)
         } else {
             const c = await client.query(`INSERT INTO channels (type, name) VALUES ('dm', 'dm') RETURNING id`, [])
