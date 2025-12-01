@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from "react"
 import { api, getFullUrl } from "@/lib/api"
 import { useAuth } from "@/hooks/useAuth"
 import { cn } from "@/lib/utils"
+import { useNotifications } from "../NotificationProvider"
 import UserProfileDialog from "./UserProfileDialog"
 import type { Message } from "@/types"
 
@@ -19,6 +20,7 @@ interface ChatPanelProps {
 }
 
 export default function ChatPanel({ variant, channelName, guildName, guildId, onMobileMenu, onUserListToggle, showUserList }: ChatPanelProps) {
+  const { markChannelRead } = useNotifications()
   const [msgs, setMsgs] = useState<Message[]>([])
   const [text, setText] = useState("")
   const [typing, setTyping] = useState<Set<string>>(new Set())
@@ -41,6 +43,12 @@ export default function ChatPanel({ variant, channelName, guildName, guildId, on
 
   const { user } = useAuth()
   const token = typeof window !== "undefined" ? (localStorage.getItem("token") || "") : ""
+
+  useEffect(() => {
+    if (channelName) {
+      markChannelRead(channelName)
+    }
+  }, [channelName, markChannelRead])
   
   useEffect(() => {
     if (variant === "dm" && channelName && token) {

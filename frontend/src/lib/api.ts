@@ -315,6 +315,12 @@ export const api = {
       headers: { Authorization: `Bearer ${token}` }
     })
   },
+  markChannelNotificationsRead: async (token: string, channelId: string) => {
+    return request<BasicResponse>(`/notifications/channel/${channelId}/read`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}` }
+    })
+  },
   markAllNotificationsRead: async (token: string) => {
     return request<BasicResponse>("/notifications/read-all", {
       method: "POST",

@@ -11,7 +11,7 @@ export async function notificationRoutes(app: FastifyInstance) {
       const payload = jwt.verify(auth.replace(/^Bearer\s+/i, ""), JWT_SECRET) as any
       
       const r = await pool.query(
-        `SELECT id::text, type, source_id::text AS "sourceId", source_type AS "sourceType", content, read, created_at AS ts
+        `SELECT id::text, type, source_id::text AS "sourceId", source_type AS "sourceType", channel_id::text AS "channelId", content, read, created_at AS ts
          FROM notifications
          WHERE user_id = $1::uuid
          ORDER BY created_at DESC
@@ -43,6 +43,23 @@ export async function notificationRoutes(app: FastifyInstance) {
     }
   })
   
+  app.post("/api/notifications/channel/:channelId/read", async (req: any) => {
+    const auth = (req.headers as any).authorization as string | undefined
+    if (!auth) return { error: "Unauthorized" }
+    try {
+      const payload = jwt.verify(auth.replace(/^Bearer\s+/i, ""), JWT_SECRET) as any
+      const { channelId } = req.params
+      
+      await pool.query(
+        `UPDATE notifications SET read = TRUE WHERE channel_id = $1::uuid AND user_id = $2::uuid`,
+        [channelId, payload.sub]
+      )
+      return { success: true }
+    } catch (e) {
+      return { error: "Error marking channel notifications as read" }
+    }
+  })
+
   app.post("/api/notifications/read-all", async (req: any) => {
     const auth = (req.headers as any).authorization as string | undefined
     if (!auth) return { error: "Unauthorized" }

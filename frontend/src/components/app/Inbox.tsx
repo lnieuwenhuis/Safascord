@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from "react"
 import { useNotifications } from "../NotificationProvider"
 import { useAuth } from "../../hooks/useAuth"
+import { useNavigate } from "react-router-dom"
 import { Bell, Check, Trash2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
@@ -23,6 +24,7 @@ function formatTimeAgo(date: Date) {
 export default function Inbox() {
   const { notifications, unreadCount, markRead, markAllRead, deleteNotification } = useNotifications()
   const { user } = useAuth()
+  const navigate = useNavigate()
   const [open, setOpen] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
 
@@ -75,7 +77,44 @@ export default function Inbox() {
             ) : (
               <div className="divide-y divide-border">
                 {notifications.map(n => (
-                  <div key={n.id} className={cn("p-4 transition-colors hover:bg-muted/50", !n.read && "bg-primary/5")}>
+                  <div 
+                    key={n.id} 
+                    className={cn("p-4 transition-colors hover:bg-muted/50 cursor-pointer", !n.read && "bg-primary/5")}
+                    onClick={async () => {
+                      // Navigate logic
+                      // If it has a channelId, we can try to navigate there.
+                      // Since we store 'channelId' in notifications (added in backend), we can use it.
+                      // However, channelId might be a UUID.
+                      // If it's a DM, source_type='dm'.
+                      // If it's a mention in a server, source_type='message'.
+                      
+                      // We need to fetch where this message is if we don't have full context.
+                      // But wait, for now let's just mark as read.
+                      // Ideally we navigate.
+                      
+                      if (n.channelId) {
+                         // We need to know if it is a DM or Guild channel to form the URL.
+                         // If source_type is 'dm', it's /channels/@me/:channelId
+                         // If source_type is 'message' (mention in server), it's /server/:serverId/channel/:channelId
+                         // BUT we don't store serverId in notification table yet (only channel_id).
+                         // We can try to find the channel in the user's list or fetch it.
+                         // For simplicity, let's just mark read for now.
+                         // Actually, let's try to infer.
+                         if (n.sourceType === 'dm') {
+                            navigate(`/channels/@me/${n.channelId}`)
+                         } else {
+                            // We need server ID.
+                            // We can fetch message details or channel details.
+                            // Let's assume we can't navigate perfectly to server channels without server ID yet.
+                            // BUT, we can look it up if we had a helper.
+                            // For now, mark read is the key action.
+                         }
+                      }
+                      
+                      markRead(n.id)
+                      setOpen(false)
+                    }}
+                  >
                     <div className="flex items-start gap-3">
                       <div className="flex-1 min-w-0">
                         <p className="text-sm text-foreground mb-1">{n.content}</p>

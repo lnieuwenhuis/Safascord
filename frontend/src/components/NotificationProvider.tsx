@@ -7,6 +7,7 @@ interface NotificationContextType {
   notifications: Notification[]
   unreadCount: number
   markRead: (id: string) => void
+  markChannelRead: (channelId: string) => void
   markAllRead: () => void
   deleteNotification: (id: string) => void
 }
@@ -95,6 +96,12 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
     await api.markNotificationRead(token, id)
   }, [])
 
+  const markChannelRead = useCallback(async (channelId: string) => {
+    const token = localStorage.getItem("token") || ""
+    setNotifications(prev => prev.map(n => n.channelId === channelId ? { ...n, read: true } : n))
+    await api.markChannelNotificationsRead(token, channelId)
+  }, [])
+
   const markAllRead = useCallback(async () => {
     const token = localStorage.getItem("token") || ""
     setNotifications(prev => prev.map(n => ({ ...n, read: true })))
@@ -110,7 +117,7 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
   const unreadCount = notifications.filter(n => !n.read).length
 
   return (
-    <NotificationContext.Provider value={{ notifications, unreadCount, markRead, markAllRead, deleteNotification }}>
+    <NotificationContext.Provider value={{ notifications, unreadCount, markRead, markChannelRead, markAllRead, deleteNotification }}>
       {children}
     </NotificationContext.Provider>
   )
