@@ -97,6 +97,7 @@ export async function messageRoutes(app: FastifyInstance) {
     const body = req.body as any
     const { channel, content, serverId } = body || {}
     if (!auth || !channel || !content) return { error: "Bad request" }
+    if (content.length > 5000) return { error: "Message too long (max 5000 characters)" }
     try {
       const payload = jwt.verify(auth.replace(/^Bearer\s+/i, ""), JWT_SECRET) as any
       
@@ -198,12 +199,81 @@ export async function messageRoutes(app: FastifyInstance) {
     const base = process.env.REALTIME_BASE_HTTP || "http://localhost:4001"
     try {
       const res = await fetch(`${base}/socket-info?channel=${encodeURIComponent(channel)}`)
-      const data = await res.json() as any
-      const wsUrl = process.env.REALTIME_BASE_WS || "ws://localhost/ws"
-      return { exists: !!data.exists, wsUrl }
-    } catch {
-      const wsUrl = process.env.REALTIME_BASE_WS || "ws://localhost/ws"
-      return { exists: false, wsUrl }
+      const data = await res.json()
+      return data
+    } catch (e) {
+      console.error("Socket info error:", e)
+      return { wsUrl: `ws://localhost:4001?channel=${encodeURIComponent(channel)}` }
+    }
+  })
+
+  app.delete("/api/messages/:id", async (req: FastifyRequest<{ Params: { id: string } }>) => {
+    const auth = (req.headers as any).authorization as string | undefined
+    if (!auth) return { error: "Unauthorized" }
+    try {
+      const payload = jwt.verify(auth.replace(/^Bearer\s+/i, ""), JWT_SECRET) as any
+      const { id } = req.params
+      
+      const m = await pool.query(`SELECT user_id, channel_id FROM messages WHERE id=$1::uuid`, [id])
+      if (!m.rowCount) return { error: "Message not found" }
+      
+      if (m.rows[0].user_id !== payload.sub) {
+         return { error: "Unauthorized" }
+      }
+
+      await pool.query(`DELETE FROM messages WHERE id=$1::uuid`, [id])
+      
+      const channelId = m.rows[0].channel_id
+      try {
+        await redis.publish("messages", JSON.stringify({ 
+          channel: channelId, 
+          data: { type: "message_delete", channel: channelId, messageId: id } 
+        }))
+      } catch {}
+      
+      return { success: true }
+    } catch (e) {
+      return { error: "Error deleting message" }
+    }
+  })
+
+  app.patch("/api/messages/:id", async (req: FastifyRequest<{ Params: { id: string }, Body: { content: string } }>) => {
+    const auth = (req.headers as any).authorization as string | undefined
+    if (!auth) return { error: "Unauthorized" }
+    try {
+      const payload = jwt.verify(auth.replace(/^Bearer\s+/i, ""), JWT_SECRET) as any
+      const { id } = req.params
+      const { content } = req.body
+      
+      if (!content || content.length > 5000) return { error: "Invalid content" }
+
+      const m = await pool.query(`SELECT user_id, channel_id FROM messages WHERE id=$1::uuid`, [id])
+      if (!m.rowCount) return { error: "Message not found" }
+      
+      if (m.rows[0].user_id !== payload.sub) {
+         return { error: "Unauthorized" }
+      }
+
+      const r = await pool.query(
+        `UPDATE messages SET content=$1::text WHERE id=$2::uuid RETURNING content, created_at`,
+        [content, id]
+      )
+      
+      const channelId = m.rows[0].channel_id
+      try {
+        await redis.publish("messages", JSON.stringify({ 
+          channel: channelId, 
+          data: { 
+            type: "message_update", 
+            channel: channelId, 
+            message: { id, text: content, ts: r.rows[0].created_at } 
+          } 
+        }))
+      } catch {}
+      
+      return { success: true, message: { id, text: content } }
+    } catch (e) {
+      return { error: "Error updating message" }
     }
   })
 }

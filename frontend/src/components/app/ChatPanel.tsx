@@ -1,6 +1,6 @@
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
-import { Hash, MessageSquare, Menu, Users } from "lucide-react"
+import { Hash, MessageSquare, Menu, Users, Pencil, Trash } from "lucide-react"
 import { useEffect, useRef, useState } from "react"
 import { api, getFullUrl } from "@/lib/api"
 import { useAuth } from "@/hooks/useAuth"
@@ -29,13 +29,17 @@ export default function ChatPanel({ variant, channelName, guildName, guildId, on
   const [loadingMore, setLoadingMore] = useState(false)
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null)
   const [dmUser, setDmUser] = useState<{ username: string; displayName: string } | null>(null)
+  
+  // Editing state
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [editingText, setEditingText] = useState("")
+
   const { user } = useAuth()
   const token = typeof window !== "undefined" ? (localStorage.getItem("token") || "") : ""
   
   useEffect(() => {
     if (variant === "dm" && channelName && token) {
       // Try to find the DM user name
-      // This is a bit inefficient to fetch all DMs, but works for now without new API endpoints
       api.getDMs(token).then(res => {
         const dm = res.dms.find(d => d.id === channelName)
         if (dm) {
@@ -134,7 +138,18 @@ export default function ChatPanel({ variant, channelName, guildName, guildId, on
       ws.onmessage = (ev) => {
         let data: unknown
         try { data = JSON.parse(String(ev.data)) } catch { return }
-        const d = data as { type?: string; channel?: string; user?: string; userAvatar?: string; userId?: string; active?: boolean; message?: { id: string; text: string; ts?: string }; roleColor?: string }
+        const d = data as { 
+          type?: string; 
+          channel?: string; 
+          user?: string; 
+          userAvatar?: string; 
+          userId?: string; 
+          active?: boolean; 
+          message?: { id: string; text: string; ts?: string }; 
+          messageId?: string;
+          roleColor?: string 
+        }
+
         if (d.type === "typing" && d.channel === channelName && d.user) {
           if (user?.id && d.userId === user.id) return
           const name = d.user
@@ -160,6 +175,12 @@ export default function ChatPanel({ variant, channelName, guildName, guildId, on
             }]
           })
           if (d.user) setTyping((prev) => { const next = new Set(prev); next.delete(d.user!); return next })
+        }
+        if (d.type === "message_delete" && d.channel === channelName && d.messageId) {
+          setMsgs((prev) => prev.filter(m => m.id !== d.messageId))
+        }
+        if (d.type === "message_update" && d.channel === channelName && d.message) {
+          setMsgs((prev) => prev.map(m => m.id === d.message!.id ? { ...m, text: d.message!.text } : m))
         }
       }
       ws.onclose = () => {
@@ -227,6 +248,33 @@ export default function ChatPanel({ variant, channelName, guildName, guildId, on
         setLoadingMore(false)
       }
     }
+  }
+
+  const handleDelete = async (id: string) => {
+    if (!token) return
+    try {
+      await api.deleteMessage(token, id)
+      setMsgs(prev => prev.filter(m => m.id !== id))
+    } catch (e) {
+      console.error("Failed to delete message", e)
+    }
+  }
+
+  const handleEdit = async (id: string, newContent: string) => {
+    if (!token) return
+    try {
+      await api.editMessage(token, id, newContent)
+      setMsgs(prev => prev.map(m => m.id === id ? { ...m, text: newContent } : m))
+      setEditingId(null)
+      setEditingText("")
+    } catch (e) {
+      console.error("Failed to edit message", e)
+    }
+  }
+
+  const startEditing = (id: string, currentText: string) => {
+    setEditingId(id)
+    setEditingText(currentText)
   }
 
   return (
@@ -350,12 +398,50 @@ export default function ChatPanel({ variant, channelName, guildName, guildId, on
                       </div>
                       {first.ts && <div className="text-xs text-muted-foreground">{fmt(first.ts)}</div>}
                     </div>
-                    <div className="text-sm text-foreground whitespace-pre-wrap wrap-break-words leading-snug">{first.text}</div>
-                    {g.messages.slice(1).map((it) => (
-                      <div key={it.id} className="mt-0.5 text-sm text-foreground whitespace-pre-wrap wrap-break-words leading-snug hover:bg-black/5 -mx-4 px-4 py-0.5 relative group/msg">
-                         {it.text}
-                      </div>
-                    ))}
+
+                    {/* Messages Loop */}
+                    {g.messages.map((it, idx) => {
+                      const isEditing = editingId === it.id
+                      const isMyMessage = isMe || (user && g.userId === user.id)
+
+                      return (
+                        <div key={it.id} className={cn("relative group/msg hover:bg-black/5 -mx-4 px-4 py-0.5", idx > 0 && "mt-0.5")}>
+                          {isEditing ? (
+                             <div className="flex gap-2 items-center py-1">
+                               <Input 
+                                 value={editingText} 
+                                 onChange={e => setEditingText(e.target.value)}
+                                 onKeyDown={e => {
+                                   if (e.key === "Enter") handleEdit(it.id, editingText)
+                                   if (e.key === "Escape") {
+                                     setEditingId(null)
+                                     setEditingText("")
+                                   }
+                                 }}
+                                 className="h-8 text-sm"
+                                 maxLength={5000}
+                               />
+                               <div className="text-xs text-muted-foreground">escape to cancel • enter to save</div>
+                             </div>
+                          ) : (
+                             <div className="text-sm text-foreground whitespace-pre-wrap wrap-break-words leading-snug pr-12">
+                                {it.text}
+                             </div>
+                          )}
+                          
+                          {!isEditing && isMyMessage && (
+                            <div className="absolute right-4 top-0 hidden group-hover/msg:flex items-center bg-background border rounded shadow-sm z-10">
+                               <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => startEditing(it.id, it.text)}>
+                                  <Pencil className="h-3 w-3" />
+                               </Button>
+                               <Button variant="ghost" size="icon" className="h-6 w-6 text-destructive hover:text-destructive" onClick={() => handleDelete(it.id)}>
+                                  <Trash className="h-3 w-3" />
+                               </Button>
+                            </div>
+                          )}
+                        </div>
+                      )
+                    })}
                   </div>
                 </div>
               )
@@ -366,13 +452,14 @@ export default function ChatPanel({ variant, channelName, guildName, guildId, on
       {typing.size > 0 && (
         <div className="px-4 pt-1 text-xs text-muted-foreground animate-pulse font-medium">{Array.from(typing).join(", ")} is typing…</div>
       )}
-      <div className="flex h-16 items-center border-t border-border px-3 bg-background">
+      <div className="flex h-auto min-h-16 flex-col justify-center border-t border-border px-3 bg-background py-2">
         <div className="flex w-full items-center gap-2">
           <Input
             className="border-0 bg-muted/50 focus-visible:ring-1 focus-visible:ring-ring"
-            placeholder={!canSend ? "You do not have permission to send messages in this channel." : (variant === "guild" ? `Message #${channelName}` : `Message ${channelName}`)}
+            placeholder={!canSend ? "You do not have permission to send messages in this channel." : (variant === "guild" ? `Message #${channelName}` : `Message ${dmUser ? (dmUser.displayName || dmUser.username) : "Direct Message"}`)}
             disabled={!canSend}
             value={text}
+            maxLength={5000}
             onChange={(e) => {
               setText(e.target.value)
               const ws = wsRef.current
@@ -391,6 +478,11 @@ export default function ChatPanel({ variant, channelName, guildName, guildId, on
           />
           <Button variant="brand" onClick={send} disabled={!canSend}>Send</Button>
         </div>
+        {text.length > 4000 && (
+          <div className={cn("text-xs text-right px-1 mt-1", text.length >= 5000 ? "text-destructive" : "text-muted-foreground")}>
+            {text.length}/5000
+          </div>
+        )}
       </div>
 
       <UserProfileDialog 

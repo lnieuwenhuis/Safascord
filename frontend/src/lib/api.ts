@@ -302,6 +302,21 @@ export const api = {
     })
   },
   
+  // Messages
+  deleteMessage: async (token: string, id: string) => {
+    return request<BasicResponse>(`/messages/${id}`, {
+      method: "DELETE",
+      headers: { Authorization: `Bearer ${token}` }
+    })
+  },
+  editMessage: async (token: string, id: string, content: string) => {
+    return request<MessageResponse>(`/messages/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ content })
+    })
+  },
+  
   // Stats
   getStatsSummary: () => get<StatsSummaryResponse>("/stats/summary"),
   getStatsActivity: () => get<StatsActivityResponse>("/stats/activity"),
