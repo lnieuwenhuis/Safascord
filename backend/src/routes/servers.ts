@@ -150,6 +150,45 @@ export async function serverRoutes(app: FastifyInstance) {
     }
   })
 
+  app.post("/api/servers/:id/invites", async (req) => {
+    const auth = (req.headers as any).authorization as string | undefined
+    const id = (req.params as any).id as string
+    const body = req.body as any
+    const { expiresIn, maxUses } = body || {}
+    
+    if (!auth || !id) return { error: "Bad request" }
+    
+    try {
+      const payload = jwt.verify(auth.replace(/^Bearer\s+/i, ""), JWT_SECRET) as any
+      
+      // Verify membership
+      const m = await pool.query(`SELECT 1 FROM server_members WHERE server_id=$1::uuid AND user_id=$2::uuid`, [id, payload.sub])
+      if (!m.rowCount) return { error: "Not a member" }
+      
+      // Generate code
+      const code = Math.random().toString(36).substring(2, 10)
+      
+      let expiresAt = null
+      if (expiresIn) {
+         expiresAt = new Date(Date.now() + expiresIn * 1000)
+      } else {
+         // Default 7 days
+         expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000) 
+      }
+
+      await pool.query(
+        `INSERT INTO invites (code, server_id, creator_id, max_uses, expires_at) 
+         VALUES ($1, $2::uuid, $3::uuid, $4, $5)`,
+        [code, id, payload.sub, maxUses || null, expiresAt]
+      )
+      
+      return { code, url: `https://safascord.org/invite/${code}` }
+    } catch (e) {
+      console.error(e)
+      return { error: "Error creating invite" }
+    }
+  })
+
   app.get("/api/servers/:id/members", async (req) => {
     const auth = (req.headers as any).authorization as string | undefined
     const id = (req.params as any).id as string

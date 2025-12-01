@@ -22,7 +22,10 @@ import { miscRoutes } from "./routes/misc.js"
 import { statsRoutes } from "./routes/stats.js"
 import { recordRequest, startMetricsCollector } from "./lib/stats.js"
 
-const app = Fastify({ logger: true })
+const app = Fastify({ 
+  logger: true,
+  bodyLimit: 50 * 1024 * 1024 // 50MB
+})
 
 // Request Latency Tracking
 app.addHook('onRequest', (req, reply, done) => {
