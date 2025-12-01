@@ -1,6 +1,6 @@
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Headphones, Mic, Cog, Pencil, Circle, MinusCircle, Moon, Disc, ChevronDown, ChevronUp, Check, Image as ImageIcon, Loader2, UserPlus, MessageSquare } from "lucide-react"
+import { Headphones, Mic, Cog, Pencil, Circle, MinusCircle, Moon, Disc, ChevronDown, ChevronUp, Check, Image as ImageIcon, Loader2, UserPlus, MessageSquare, X } from "lucide-react"
 import { useState, useEffect } from "react"
 import UserSettings from "./UserSettings"
 import { useAuth } from "@/hooks/useAuth"
@@ -120,12 +120,12 @@ export function ProfileCard({
           </div>
         </div>
 
-        <div className="mt-3 text-sm whitespace-pre-wrap break-words">
+        <div className="mt-3 text-sm whitespace-pre-wrap wrap-break-word">
            {bio || <span className="text-muted-foreground italic">No bio provided</span>}
         </div>
 
         {/* Separator */}
-        <div className="my-3 h-[1px] bg-border" />
+        <div className="my-3 h-1px bg-border" />
         
         {/* Role Section */}
         {roles && roles.length > 0 && (
@@ -190,7 +190,7 @@ export function ProfileCard({
            {statusDropdownOpen && (
              <>
                <div className="fixed inset-0 z-50" onClick={() => setStatusDropdownOpen(false)} />
-               <div className="absolute bottom-full left-0 mb-1 w-full rounded-md border border-border bg-popover p-1 shadow-lg z-[60]">
+               <div className="absolute bottom-full left-0 mb-1 w-full rounded-md border border-border bg-popover p-1 shadow-lg z-60">
                  {(Object.keys(statusConfig) as UserStatus[]).map((s) => (
                    <button
                      key={s}
@@ -444,7 +444,7 @@ export default function UserCard() {
             onClick={() => setMuted((v) => !v)}
           >
             <Mic className="h-4 w-4" />
-            {muted && <span className="absolute left-1/2 top-1/2 h-[2px] w-5 -translate-x-1/2 -translate-y-1/2 rotate-45 bg-current" />}
+            {muted && <span className="absolute left-1/2 top-1/2 h-2px w-5 -translate-x-1/2 -translate-y-1/2 rotate-45 bg-current" />}
           </Button>
           <Button
             variant="ghost"
@@ -453,7 +453,7 @@ export default function UserCard() {
             onClick={() => setDeaf((v) => !v)}
           >
             <Headphones className="h-4 w-4" />
-            {deaf && <span className="absolute left-1/2 top-1/2 h-[2px] w-5 -translate-x-1/2 -translate-y-1/2 rotate-45 bg-current" />}
+            {deaf && <span className="absolute left-1/2 top-1/2 h-2px w-5 -translate-x-1/2 -translate-y-1/2 rotate-45 bg-current" />}
           </Button>
           <Button
             variant="ghost"
@@ -470,7 +470,7 @@ export default function UserCard() {
 
       {/* Edit Profile Modal */}
       {editProfileOpen && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+        <div className="fixed inset-0 z-100 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in duration-200">
           <div className="flex h-[85vh] w-[800px] overflow-hidden rounded-lg bg-card shadow-2xl animate-in zoom-in-95 duration-200 flex-col md:flex-row">
             
             {/* Sidebar / Form */}
