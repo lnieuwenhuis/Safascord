@@ -177,7 +177,7 @@ export async function serverRoutes(app: FastifyInstance) {
       }
 
       await pool.query(
-        `INSERT INTO invites (code, server_id, creator_id, max_uses, expires_at) 
+        `INSERT INTO invites (code, server_id, created_by, max_uses, expires_at) 
          VALUES ($1, $2::uuid, $3::uuid, $4, $5)`,
         [code, id, payload.sub, maxUses || null, expiresAt]
       )
