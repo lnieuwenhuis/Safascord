@@ -252,12 +252,17 @@ export async function channelRoutes(app: FastifyInstance) {
          
          if (!isOwner) {
             // Filter by permissions
+            // Logic:
+            // 1. If channel is DM, allow (handled by other logic usually, but included for safety)
+            // 2. If NO permissions exist for this channel, it's public -> Allow
+            // 3. If permissions EXIST, user must have AT LEAST ONE role that allows viewing -> Allow
             query += `
               AND (
                 c.type = 'dm' OR
                 NOT EXISTS (SELECT 1 FROM channel_permissions cp WHERE cp.channel_id = c.id)
                 OR EXISTS (
-                   SELECT 1 FROM channel_permissions cp
+                   SELECT 1 
+                   FROM channel_permissions cp
                    JOIN server_member_roles smr ON smr.role_id = cp.role_id
                    WHERE cp.channel_id = c.id 
                      AND smr.user_id = $2::uuid
