@@ -68,17 +68,18 @@ export async function messageRoutes(app: FastifyInstance) {
                 messages.content AS text,
                 messages.attachment_url,
                 messages.created_at AS ts,
-                (
-                  SELECT r.color 
-                  FROM server_member_roles smr
-                  JOIN roles r ON r.id = smr.role_id
-                  WHERE smr.user_id = messages.user_id AND smr.server_id = channels.server_id
-                  ORDER BY r.position ASC
-                  LIMIT 1
-                ) AS role_color
+                user_role.color AS role_color
          FROM messages
          JOIN channels ON channels.id = messages.channel_id
          LEFT JOIN users ON users.id = messages.user_id
+         LEFT JOIN LATERAL (
+            SELECT r.color 
+            FROM server_member_roles smr
+            JOIN roles r ON r.id = smr.role_id
+            WHERE smr.user_id = messages.user_id AND smr.server_id = channels.server_id
+            ORDER BY r.position ASC
+            LIMIT 1
+         ) AS user_role ON true
          WHERE messages.channel_id = $1::uuid
            AND ($2::timestamptz IS NULL OR messages.created_at < $2::timestamptz)
          ORDER BY messages.created_at DESC

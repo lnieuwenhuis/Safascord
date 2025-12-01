@@ -147,6 +147,10 @@ export async function runMigrations() {
        await pool.query(`ALTER TABLE messages ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT now();`)
        await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT now();`)
     } catch {}
+
+    // Performance Indexes
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_server_member_roles_user_server ON server_member_roles(user_id, server_id);`)
+    
   } catch (e) {
     console.error("Migration failed", e)
   }

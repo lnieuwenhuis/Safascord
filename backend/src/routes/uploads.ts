@@ -23,7 +23,10 @@ async function cleanupStorage() {
          ContinuationToken: continuationToken 
        }))
        if (res.Contents) {
-         objects.push(...res.Contents.map((o: ObjectType) => ({ Key: o.Key!, LastModified: o.LastModified! })))
+         const validObjects = res.Contents
+           .filter((o: any) => o.Key && o.LastModified)
+           .map((o: any) => ({ Key: o.Key!, LastModified: o.LastModified! }))
+         objects.push(...validObjects)
        }
        continuationToken = res.NextContinuationToken
     } while (continuationToken)
