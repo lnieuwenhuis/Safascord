@@ -10,6 +10,7 @@ export interface User {
   bannerUrl?: string | null
   avatarUrl?: string | null
   customBackgroundUrl?: string | null
+  customBackgroundOpacity?: number | null
   status?: UserStatus | string | null
   roleColor?: string
   discriminator?: string

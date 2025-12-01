@@ -139,9 +139,10 @@ export async function messageRoutes(app: FastifyInstance) {
            [channelId, payload.sub, c.rows[0].server_id]
          )
          
-         // If permissions exist, user must have explicit allow
+         // If permissions exist, user must have at least one allowed role
          const hasPerms = await pool.query(`SELECT 1 FROM channel_permissions WHERE channel_id=$1::uuid LIMIT 1`, [channelId])
          if (hasPerms.rowCount && hasPerms.rowCount > 0) {
+            // User can send if ANY of their roles allow it (Logical OR)
             const canSend = perms.rows.some(r => r.can_send_messages)
             
             // Check if owner

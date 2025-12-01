@@ -257,6 +257,7 @@ export default function UserCard() {
   const [tempBannerImage, setTempBannerImage] = useState<string | null>(bannerImage)
   const [tempAvatarImage, setTempAvatarImage] = useState<string | null>(avatarImage)
   const [tempCustomBackground, setTempCustomBackground] = useState<string | null>(getFullUrl(user?.customBackgroundUrl))
+  const [tempBackgroundOpacity, setTempBackgroundOpacity] = useState<number>(user?.customBackgroundOpacity ?? 0.85)
   
   // Files to upload
   const [bannerFile, setBannerFile] = useState<File | null>(null)
@@ -299,6 +300,9 @@ export default function UserCard() {
       let newAvatarUrl = user.avatarUrl
       let newBackgroundUrl = user.customBackgroundUrl
 
+      // If temp values are explicitly null (cleared), respect that
+      if (tempCustomBackground === null) newBackgroundUrl = null
+
       const token = localStorage.getItem("token")
       if (!token) return
 
@@ -323,6 +327,7 @@ export default function UserCard() {
         bannerUrl: newBannerUrl,
         avatarUrl: newAvatarUrl,
         customBackgroundUrl: newBackgroundUrl,
+        customBackgroundOpacity: tempBackgroundOpacity,
         status: status // Maintain current status
       }
       
@@ -342,6 +347,7 @@ export default function UserCard() {
            bannerUrl: newBannerUrl,
            avatarUrl: newAvatarUrl,
            customBackgroundUrl: newBackgroundUrl,
+           customBackgroundOpacity: tempBackgroundOpacity,
            bio: tempBio,
            bannerColor: tempBannerColor
         })
@@ -564,6 +570,21 @@ export default function UserCard() {
                           Upload Background
                           <input type="file" accept="image/*" className="absolute inset-0 opacity-0 cursor-pointer" onChange={(e) => handleFileChange(e, 'background')} />
                        </Button>
+                       <div className="pt-2">
+                          <div className="flex justify-between text-xs text-muted-foreground mb-1">
+                             <span>Opacity</span>
+                             <span>{Math.round(tempBackgroundOpacity * 100)}%</span>
+                          </div>
+                          <input 
+                             type="range" 
+                             min="0.1" 
+                             max="1" 
+                             step="0.05"
+                             value={tempBackgroundOpacity}
+                             onChange={(e) => setTempBackgroundOpacity(parseFloat(e.target.value))}
+                             className="w-full h-2 bg-secondary rounded-lg appearance-none cursor-pointer"
+                          />
+                       </div>
                        <p className="text-xs text-muted-foreground">This will be set as the background for the entire app.</p>
                     </div>
                  </div>

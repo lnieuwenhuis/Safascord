@@ -100,18 +100,27 @@ export default function ChatPanel({ variant, channelName, guildName, guildId, on
              // Find our channel
              // Flatten sections
             let found = false
+            // If no sections/channels returned, we assume no access or empty
+            // If sections exist, check permissions for the specific channel
+            // Flatten sections to find the channel
             for (const s of res.sections) {
                const c = s.channels.find(x => x.name === channelName)
                if (c) {
+                  // If canSendMessages is undefined, it means no override, so it defaults to true/inherited
+                  // But in our API, if the user has ANY role that allows sending, the backend should reflect that.
+                  // The backend API logic for `channels` endpoint might need to be robust.
+                  // For now, we trust the `canSendMessages` property from the API.
                   setCanSend(c.canSendMessages ?? true)
                   found = true
                   break
                }
             }
-            if (!found) setCanSend(true) // Default if not found?
+            // If channel not found in the list (maybe it's hidden), we can't send.
+            if (!found) setCanSend(false) 
          }).catch(e => {
             console.error(e)
-            setCanSend(true)
+            // If API fails, default to true or false? False is safer.
+            setCanSend(false)
          })
     } else {
        setCanSend(true)

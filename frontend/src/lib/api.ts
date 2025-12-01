@@ -265,7 +265,7 @@ export const api = {
       body: formData,
     })
   },
-  updateProfile: async (token: string, data: { bio?: string | null; bannerColor?: string | null; bannerUrl?: string | null; avatarUrl?: string | null; customBackgroundUrl?: string | null; status?: string | null; username?: string; displayName?: string }) => {
+  updateProfile: async (token: string, data: { bio?: string | null; bannerColor?: string | null; bannerUrl?: string | null; avatarUrl?: string | null; customBackgroundUrl?: string | null; customBackgroundOpacity?: number | null; status?: string | null; username?: string; displayName?: string }) => {
     return request<UserResponse>("/me/profile", {
       method: "PATCH",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },

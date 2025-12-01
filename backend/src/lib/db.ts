@@ -21,6 +21,9 @@ pool.query('SELECT NOW()').then(async (res) => {
     
     await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS custom_background_url TEXT;`)
     console.log("Migration: Added custom_background_url to users table")
+
+    await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS custom_background_opacity NUMERIC DEFAULT 0.85;`)
+    console.log("Migration: Added custom_background_opacity to users table")
   } catch (e) {
     console.error("Migration failed:", e)
   }

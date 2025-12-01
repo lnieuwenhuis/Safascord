@@ -10,7 +10,7 @@ export async function userRoutes(app: FastifyInstance) {
     try {
       const payload = jwt.verify(auth.replace(/^Bearer\s+/i, ""), JWT_SECRET) as any
       const r = await pool.query(
-        `SELECT id::text AS id, username, email, display_name, bio, banner_color, banner_url, avatar_url, custom_background_url, status, discriminator, allow_dms_from_strangers AS "allowDmsFromStrangers"
+        `SELECT id::text AS id, username, email, display_name, bio, banner_color, banner_url, avatar_url, custom_background_url, custom_background_opacity, status, discriminator, allow_dms_from_strangers AS "allowDmsFromStrangers"
          FROM users WHERE id = $1::uuid`,
         [payload.sub]
       )
@@ -26,6 +26,7 @@ export async function userRoutes(app: FastifyInstance) {
         bannerUrl: u.banner_url,
         avatarUrl: u.avatar_url,
         customBackgroundUrl: u.custom_background_url,
+        customBackgroundOpacity: u.custom_background_opacity,
         status: u.status,
         discriminator: u.discriminator,
         allowDmsFromStrangers: u.allowDmsFromStrangers
@@ -93,7 +94,7 @@ export async function userRoutes(app: FastifyInstance) {
   app.patch("/api/me/profile", async (req) => {
     const auth = (req.headers as any).authorization as string | undefined
     const body = req.body as any
-    const { bio, bannerColor, bannerUrl, avatarUrl, customBackgroundUrl, status, username, displayName } = body || {}
+    const { bio, bannerColor, bannerUrl, avatarUrl, customBackgroundUrl, customBackgroundOpacity, status, username, displayName } = body || {}
     if (!auth) return { error: "Unauthorized" }
     try {
       const payload = jwt.verify(auth.replace(/^Bearer\s+/i, ""), JWT_SECRET) as any
@@ -112,6 +113,7 @@ export async function userRoutes(app: FastifyInstance) {
       if (bannerUrl !== undefined) { fields.push(`banner_url=$${idx++}`); values.push(bannerUrl) }
       if (avatarUrl !== undefined) { fields.push(`avatar_url=$${idx++}`); values.push(avatarUrl) }
       if (customBackgroundUrl !== undefined) { fields.push(`custom_background_url=$${idx++}`); values.push(customBackgroundUrl) }
+      if (customBackgroundOpacity !== undefined) { fields.push(`custom_background_opacity=$${idx++}`); values.push(customBackgroundOpacity) }
       if (status !== undefined) { fields.push(`status=$${idx++}`); values.push(status) }
       if (username !== undefined) { fields.push(`username=$${idx++}`); values.push(username) }
       if (displayName !== undefined) { fields.push(`display_name=$${idx++}`); values.push(displayName) }
@@ -121,7 +123,7 @@ export async function userRoutes(app: FastifyInstance) {
       values.push(payload.sub)
       const r = await pool.query(
         `UPDATE users SET ${fields.join(", ")} WHERE id=$${idx}::uuid
-         RETURNING id::text AS id, username, email, display_name, bio, banner_color, banner_url, avatar_url, custom_background_url, status`,
+         RETURNING id::text AS id, username, email, display_name, bio, banner_color, banner_url, avatar_url, custom_background_url, custom_background_opacity, status`,
         values
       )
       const u = r.rows[0]
@@ -135,6 +137,7 @@ export async function userRoutes(app: FastifyInstance) {
         bannerUrl: u.banner_url,
         avatarUrl: u.avatar_url,
         customBackgroundUrl: u.custom_background_url,
+        customBackgroundOpacity: u.custom_background_opacity,
         status: u.status
       } }
     } catch {

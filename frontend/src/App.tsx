@@ -30,10 +30,11 @@ function BackgroundManager() {
           document.body.style.backgroundAttachment = 'fixed'
           
           // Make backgrounds transparent
-          document.documentElement.style.setProperty('--background', 'rgba(14, 17, 22, 0.85)')
-          document.documentElement.style.setProperty('--card', 'rgba(30, 31, 34, 0.85)')
-          document.documentElement.style.setProperty('--sidebar', 'rgba(43, 45, 49, 0.85)')
-          document.documentElement.style.setProperty('--popover', 'rgba(30, 31, 34, 0.95)')
+          const opacity = user.customBackgroundOpacity ?? 0.85
+          document.documentElement.style.setProperty('--background', `rgba(14, 17, 22, ${opacity})`)
+          document.documentElement.style.setProperty('--card', `rgba(30, 31, 34, ${opacity})`)
+          document.documentElement.style.setProperty('--sidebar', `rgba(43, 45, 49, ${opacity})`)
+          document.documentElement.style.setProperty('--popover', `rgba(30, 31, 34, ${Math.min(1, opacity + 0.1)})`)
        }
     } else {
        document.body.style.backgroundImage = ''
@@ -48,7 +49,7 @@ function BackgroundManager() {
        document.documentElement.style.removeProperty('--sidebar')
        document.documentElement.style.removeProperty('--popover')
     }
-  }, [user?.customBackgroundUrl])
+  }, [user?.customBackgroundUrl, user?.customBackgroundOpacity])
   
   return null
 }
