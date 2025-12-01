@@ -209,7 +209,7 @@ export async function userRoutes(app: FastifyInstance) {
                   MIN(upr.position) as min_pos
            FROM user_primary_role upr
            JOIN users ON users.id = upr.user_id
-           GROUP BY COALESCE(upr.display_group, 'Member')
+           GROUP BY COALESCE(upr.display_group, 'Users')
            ORDER BY min_pos ASC, title`,
           [serverId || null]
         )
