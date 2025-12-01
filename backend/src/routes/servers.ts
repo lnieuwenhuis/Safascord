@@ -189,6 +189,102 @@ export async function serverRoutes(app: FastifyInstance) {
     }
   })
 
+  app.get("/api/invites/:code", async (req) => {
+     const code = (req.params as any).code as string
+     if (!code) return { error: "Bad request" }
+     
+     try {
+       const r = await pool.query(
+         `SELECT i.code, i.server_id, i.expires_at, i.max_uses, i.uses, 
+                 s.name as server_name, s.icon_url, s.banner_url,
+                 (SELECT count(*) FROM server_members WHERE server_id = s.id) as member_count
+          FROM invites i
+          JOIN servers s ON s.id = i.server_id
+          WHERE i.code = $1`,
+         [code]
+       )
+       
+       if (!r.rowCount) return { error: "Invite not found" }
+       const invite = r.rows[0]
+       
+       if (invite.expires_at && new Date(invite.expires_at) < new Date()) {
+          return { error: "Invite expired" }
+       }
+       if (invite.max_uses && invite.uses >= invite.max_uses) {
+          return { error: "Invite max uses reached" }
+       }
+       
+       return {
+         code: invite.code,
+         server: {
+           id: invite.server_id,
+           name: invite.server_name,
+           iconUrl: invite.icon_url,
+           bannerUrl: invite.banner_url,
+           memberCount: parseInt(invite.member_count)
+         },
+         expiresAt: invite.expires_at,
+         maxUses: invite.max_uses,
+         uses: invite.uses
+       }
+     } catch (e) {
+       return { error: "Error fetching invite" }
+     }
+  })
+
+  app.post("/api/invites/:code/accept", async (req) => {
+     const auth = (req.headers as any).authorization as string | undefined
+     const code = (req.params as any).code as string
+     if (!auth || !code) return { error: "Bad request" }
+     
+     try {
+       const payload = jwt.verify(auth.replace(/^Bearer\s+/i, ""), JWT_SECRET) as any
+       
+       // Fetch invite
+       const r = await pool.query(
+         `SELECT i.*, s.name as server_name 
+          FROM invites i
+          JOIN servers s ON s.id = i.server_id
+          WHERE i.code = $1`, 
+         [code]
+       )
+       if (!r.rowCount) return { error: "Invite not found" }
+       const invite = r.rows[0]
+       
+       if (invite.expires_at && new Date(invite.expires_at) < new Date()) {
+          return { error: "Invite expired" }
+       }
+       if (invite.max_uses && invite.uses >= invite.max_uses) {
+          return { error: "Invite max uses reached" }
+       }
+       
+       // Check if banned
+       const banned = await pool.query(`SELECT 1 FROM server_bans WHERE server_id=$1::uuid AND user_id=$2::uuid`, [invite.server_id, payload.sub])
+       if (banned.rowCount) return { error: "You are banned from this server" }
+       
+       // Add member
+       // Default role is 'Member' or position 1?
+       const role = await pool.query(`SELECT id FROM roles WHERE server_id=$1::uuid AND name='Member' LIMIT 1`, [invite.server_id])
+       let roleId = role.rows[0]?.id
+       if (!roleId) {
+          // Fallback to any lowest role
+          const anyRole = await pool.query(`SELECT id FROM roles WHERE server_id=$1::uuid ORDER BY position DESC LIMIT 1`, [invite.server_id])
+          roleId = anyRole.rows[0]?.id
+       }
+       
+       await pool.query(`INSERT INTO server_members (server_id, user_id, role_id) VALUES ($1::uuid, $2::uuid, $3::uuid) ON CONFLICT DO NOTHING`, [invite.server_id, payload.sub, roleId])
+       await pool.query(`INSERT INTO server_member_roles (server_id, user_id, role_id) VALUES ($1::uuid, $2::uuid, $3::uuid) ON CONFLICT DO NOTHING`, [invite.server_id, payload.sub, roleId])
+       
+       // Increment uses
+       await pool.query(`UPDATE invites SET uses = uses + 1 WHERE code=$1`, [code])
+       
+       return { success: true, serverId: invite.server_id }
+     } catch (e) {
+       console.error(e)
+       return { error: "Error joining server" }
+     }
+  })
+
   app.get("/api/servers/:id/members", async (req) => {
     const auth = (req.headers as any).authorization as string | undefined
     const id = (req.params as any).id as string

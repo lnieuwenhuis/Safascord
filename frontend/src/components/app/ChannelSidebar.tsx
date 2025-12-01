@@ -70,7 +70,7 @@ export default function ChannelSidebar({ guildId, activeChannelId }: { guildId?:
       {server?.bannerUrl && (
         <div className="w-full h-32 relative">
            <img src={getFullUrl(server.bannerUrl) || server.bannerUrl} alt="Banner" className="w-full h-full object-cover" />
-           <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
+           <div className="absolute inset-0 bg-linear-to-t from-black/60 to-transparent" />
         </div>
       )}
       <div className="px-3 py-3">
@@ -119,7 +119,7 @@ export default function ChannelSidebar({ guildId, activeChannelId }: { guildId?:
         <UserCard />
       </div>
       {menu && (
-        <div className="fixed z-[120] rounded border border-border bg-popover shadow-md text-popover-foreground" style={{ left: menu.x, top: menu.y }} onMouseLeave={() => setMenu(null)}>
+        <div className="fixed z-120 rounded border border-border bg-popover shadow-md text-popover-foreground" style={{ left: menu.x, top: menu.y }} onMouseLeave={() => setMenu(null)}>
           {menu.channel === "__header__" ? (
             <>
               <button className="block w-40 px-3 py-2 text-left hover:bg-accent hover:text-accent-foreground text-sm" onClick={() => { 
@@ -176,7 +176,7 @@ export default function ChannelSidebar({ guildId, activeChannelId }: { guildId?:
 
       {/* Create Category Modal */}
       {createCategoryOpen && (
-        <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/60 backdrop-blur-sm supports-[backdrop-filter]:bg-black/50 p-4" onClick={() => setCreateCategoryOpen(false)}>
+        <div className="fixed inset-0 z-110 flex items-center justify-center bg-black/60 backdrop-blur-sm supports-backdrop-filter:bg-black/50 p-4" onClick={() => setCreateCategoryOpen(false)}>
           <div className="w-[420px] rounded-lg border border-border bg-card p-4 shadow-xl text-card-foreground" onClick={(e) => e.stopPropagation()}>
             <div className="text-lg font-semibold">Create Category</div>
             <div className="mt-2"><Input placeholder="Category Name" value={newCategoryName} onChange={(e) => setNewCategoryName(e.target.value)} /></div>
