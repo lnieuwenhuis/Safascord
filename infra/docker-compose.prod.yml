@@ -86,6 +86,8 @@ services:
       S3_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-password}
       S3_BUCKET_NAME: uploads
       S3_PUBLIC_URL: https://storage.${DOMAIN_NAME}
+      PROXY_UPLOADS: "true"
+      API_URL: https://${DOMAIN_NAME}
     depends_on: [pgbouncer, redis, minio]
     networks: [appnet]
     expose:
