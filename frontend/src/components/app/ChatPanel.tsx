@@ -510,9 +510,18 @@ export default function ChatPanel({ variant, channelName, guildName, guildId, on
       <div className="flex h-auto min-h-16 flex-col justify-center border-t border-border px-3 bg-background py-2">
         {selectedFile && (
            <div className="flex items-center gap-2 bg-muted/50 p-2 rounded mb-2">
-              <FileIcon className="h-4 w-4" />
+              {selectedFile.type.startsWith('image/') ? (
+                 <img 
+                    src={URL.createObjectURL(selectedFile)} 
+                    alt="Preview" 
+                    className="h-12 w-12 object-cover rounded" 
+                    onLoad={(e) => URL.revokeObjectURL(e.currentTarget.src)}
+                 />
+              ) : (
+                 <FileIcon className="h-8 w-8 text-muted-foreground" />
+              )}
               <span className="text-xs truncate max-w-[200px]">{selectedFile.name}</span>
-              <Button variant="ghost" size="icon" className="h-5 w-5" onClick={clearFile}>
+              <Button variant="ghost" size="icon" className="h-5 w-5 ml-auto" onClick={clearFile}>
                  <X className="h-3 w-3" />
               </Button>
            </div>
@@ -534,6 +543,24 @@ export default function ChatPanel({ variant, channelName, guildName, guildId, on
             disabled={!canSend || isUploading}
             value={text}
             maxLength={5000}
+            onPaste={(e) => {
+               const items = e.clipboardData?.items
+               if (!items) return
+               for (let i = 0; i < items.length; i++) {
+                  if (items[i].type.indexOf("image") !== -1) {
+                     e.preventDefault()
+                     const file = items[i].getAsFile()
+                     if (file) {
+                        if (file.size > 50 * 1024 * 1024) {
+                           alert("File too large (max 50MB)")
+                           return
+                        }
+                        setSelectedFile(file)
+                     }
+                     return
+                  }
+               }
+            }}
             onChange={(e) => {
               setText(e.target.value)
               const ws = wsRef.current

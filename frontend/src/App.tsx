@@ -1,6 +1,8 @@
 import { MemoryRouter, Routes, Route, Navigate, useLocation } from "react-router-dom"
 import { useEffect } from "react"
 import { AuthProvider } from "./components/AuthProvider"
+import { useAuth } from "./hooks/useAuth"
+import { getFullUrl } from "./lib/api"
 import Home from "./pages/Home"
 import Auth from "./pages/Auth"
 import DMs from "./pages/DMs"
@@ -14,6 +16,42 @@ import Invite from "./pages/Invite"
 import NotFound from "./pages/NotFound"
 import ProtectedRoute from "./components/routes/ProtectedRoute"
 import { StatsPage } from "./components/admin/StatsPage"
+
+function BackgroundManager() {
+  const { user } = useAuth()
+  
+  useEffect(() => {
+    if (user?.customBackgroundUrl) {
+       const url = getFullUrl(user.customBackgroundUrl)
+       if (url) {
+          document.body.style.backgroundImage = `url(${url})`
+          document.body.style.backgroundSize = 'cover'
+          document.body.style.backgroundPosition = 'center'
+          document.body.style.backgroundAttachment = 'fixed'
+          
+          // Make backgrounds transparent
+          document.documentElement.style.setProperty('--background', 'rgba(14, 17, 22, 0.85)')
+          document.documentElement.style.setProperty('--card', 'rgba(30, 31, 34, 0.85)')
+          document.documentElement.style.setProperty('--sidebar', 'rgba(43, 45, 49, 0.85)')
+          document.documentElement.style.setProperty('--popover', 'rgba(30, 31, 34, 0.95)')
+       }
+    } else {
+       document.body.style.backgroundImage = ''
+       document.body.style.backgroundSize = ''
+       document.body.style.backgroundPosition = ''
+       document.body.style.backgroundAttachment = ''
+       
+       // Reset to defaults (using style.removeProperty didn't always revert to CSS vars properly if they were overwritten)
+       // Ideally, we should remove the inline styles so the CSS class takes over.
+       document.documentElement.style.removeProperty('--background')
+       document.documentElement.style.removeProperty('--card')
+       document.documentElement.style.removeProperty('--sidebar')
+       document.documentElement.style.removeProperty('--popover')
+    }
+  }, [user?.customBackgroundUrl])
+  
+  return null
+}
 
 function RoutePersister() {
   const location = useLocation()
@@ -63,6 +101,7 @@ export default function App() {
       <MemoryRouter initialEntries={[initialPath]}>
         <URLHider />
         <RoutePersister />
+        <BackgroundManager />
         <Routes>
         <Route path="/" element={<Home />} />
         <Route path="/auth" element={<Auth />} />

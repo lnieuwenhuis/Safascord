@@ -256,10 +256,12 @@ export default function UserCard() {
   const [tempBannerColor, setTempBannerColor] = useState(bannerColor)
   const [tempBannerImage, setTempBannerImage] = useState<string | null>(bannerImage)
   const [tempAvatarImage, setTempAvatarImage] = useState<string | null>(avatarImage)
+  const [tempCustomBackground, setTempCustomBackground] = useState<string | null>(getFullUrl(user?.customBackgroundUrl))
   
   // Files to upload
   const [bannerFile, setBannerFile] = useState<File | null>(null)
   const [avatarFile, setAvatarFile] = useState<File | null>(null)
+  const [customBackgroundFile, setCustomBackgroundFile] = useState<File | null>(null)
 
   const username = user?.username || "user"
 
@@ -295,6 +297,7 @@ export default function UserCard() {
     try {
       let newBannerUrl = user.bannerUrl
       let newAvatarUrl = user.avatarUrl
+      let newBackgroundUrl = user.customBackgroundUrl
 
       const token = localStorage.getItem("token")
       if (!token) return
@@ -308,6 +311,10 @@ export default function UserCard() {
         const res = await api.uploadFile(token, avatarFile)
         if (res.url) newAvatarUrl = res.url
       }
+      if (customBackgroundFile) {
+        const res = await api.uploadFile(token, customBackgroundFile)
+        if (res.url) newBackgroundUrl = res.url
+      }
 
       // Update Profile
       const profileData = {
@@ -315,6 +322,7 @@ export default function UserCard() {
         bannerColor: tempBannerColor,
         bannerUrl: newBannerUrl,
         avatarUrl: newAvatarUrl,
+        customBackgroundUrl: newBackgroundUrl,
         status: status // Maintain current status
       }
       
@@ -333,6 +341,7 @@ export default function UserCard() {
            displayName: tempDisplayName,
            bannerUrl: newBannerUrl,
            avatarUrl: newAvatarUrl,
+           customBackgroundUrl: newBackgroundUrl,
            bio: tempBio,
            bannerColor: tempBannerColor
         })
@@ -362,16 +371,18 @@ export default function UserCard() {
     }
   }
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>, type: 'banner' | 'avatar') => {
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>, type: 'banner' | 'avatar' | 'background') => {
     const file = e.target.files?.[0]
     if (file) {
       if (type === 'banner') setBannerFile(file)
       if (type === 'avatar') setAvatarFile(file)
+      if (type === 'background') setCustomBackgroundFile(file)
 
       const reader = new FileReader()
       reader.onloadend = () => {
         if (type === 'banner') setTempBannerImage(reader.result as string)
         if (type === 'avatar') setTempAvatarImage(reader.result as string)
+        if (type === 'background') setTempCustomBackground(reader.result as string)
       }
       reader.readAsDataURL(file)
     }
@@ -526,6 +537,35 @@ export default function UserCard() {
                        </Button>
                      )}
                    </div>
+                 </div>
+
+                 {/* Custom Background */}
+                 <div className="space-y-2">
+                    <label className="text-xs font-bold uppercase text-muted-foreground">Custom Background</label>
+                    <div className="space-y-3">
+                       {tempCustomBackground && (
+                          <div className="relative h-32 w-full rounded-md overflow-hidden border border-border">
+                             <img src={tempCustomBackground} alt="Background preview" className="h-full w-full object-cover" />
+                             <Button 
+                                variant="destructive" 
+                                size="icon" 
+                                className="absolute top-2 right-2 h-6 w-6"
+                                onClick={() => {
+                                   setTempCustomBackground(null)
+                                   setCustomBackgroundFile(null)
+                                }}
+                             >
+                                <X className="h-3 w-3" />
+                             </Button>
+                          </div>
+                       )}
+                       <Button variant="secondary" className="relative overflow-hidden w-full">
+                          <ImageIcon className="mr-2 h-4 w-4" />
+                          Upload Background
+                          <input type="file" accept="image/*" className="absolute inset-0 opacity-0 cursor-pointer" onChange={(e) => handleFileChange(e, 'background')} />
+                       </Button>
+                       <p className="text-xs text-muted-foreground">This will be set as the background for the entire app.</p>
+                    </div>
                  </div>
                </div>
             </div>

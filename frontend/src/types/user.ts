@@ -9,6 +9,7 @@ export interface User {
   bannerColor?: string | null
   bannerUrl?: string | null
   avatarUrl?: string | null
+  customBackgroundUrl?: string | null
   status?: UserStatus | string | null
   roleColor?: string
   discriminator?: string

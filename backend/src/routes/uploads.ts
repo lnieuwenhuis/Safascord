@@ -32,6 +32,7 @@ async function cleanupStorage() {
     const queries = [
       `SELECT avatar_url FROM users WHERE avatar_url IS NOT NULL`,
       `SELECT banner_url FROM users WHERE banner_url IS NOT NULL`,
+      `SELECT custom_background_url FROM users WHERE custom_background_url IS NOT NULL`,
       `SELECT icon_url FROM servers WHERE icon_url IS NOT NULL`,
       `SELECT banner_url FROM servers WHERE banner_url IS NOT NULL`,
       `SELECT attachment_url FROM messages WHERE attachment_url IS NOT NULL`

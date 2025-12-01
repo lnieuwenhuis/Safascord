@@ -18,6 +18,9 @@ pool.query('SELECT NOW()').then(async (res) => {
   try {
     await pool.query(`ALTER TABLE messages ADD COLUMN IF NOT EXISTS attachment_url TEXT;`)
     console.log("Migration: Added attachment_url to messages table")
+    
+    await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS custom_background_url TEXT;`)
+    console.log("Migration: Added custom_background_url to users table")
   } catch (e) {
     console.error("Migration failed:", e)
   }
