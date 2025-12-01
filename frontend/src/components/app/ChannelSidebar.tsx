@@ -134,9 +134,19 @@ export default function ChannelSidebar({ guildId, activeChannelId }: { guildId?:
               <button className="block w-40 px-3 py-2 text-left hover:bg-accent hover:text-accent-foreground text-sm" onClick={async () => {
                 setMenu(null)
                 if (!guildId || !token) return
-                const r = await api.createInvite(token, guildId)
-                const link = `${window.location.origin}/invite/${r.code}`
-                alert(`Invite link: ${link}`)
+                try {
+                  const r = await api.createInvite(token, guildId)
+                  if (r.code) {
+                    const link = `${window.location.origin}/invite/${r.code}`
+                    await navigator.clipboard.writeText(link)
+                    alert(`Invite link copied to clipboard: ${link}`)
+                  } else {
+                    alert("Failed to create invite link")
+                  }
+                } catch (e) {
+                  console.error("Invite creation error:", e)
+                  alert("Failed to create invite link")
+                }
               }}>Invite People</button>
             </>
           ) : (
