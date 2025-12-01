@@ -299,50 +299,13 @@ export async function serverRoutes(app: FastifyInstance) {
       
       if (channelId) {
           // Check if channel is private
-          const c = await pool.query(`SELECT is_private FROM channels WHERE id=$1::uuid`, [channelId])
-          if (c.rows[0]?.is_private) {
-              // Fetch allowed roles/members for this channel
-              // Logic: User must have a role that is in channel_permissions with allow=true OR be the server owner OR have ADMINISTRATOR permission
-              // This is complex to do in a single query, so let's do a post-filter or simpler join.
-              
-              // Simplification: Get all members, then filter based on permissions?
-              // Better: Join with channel_permissions
-              // But permissions are bitmasks on roles. 
-              // Actually, channel_permissions table stores role_id or user_id override.
-              
-              // Let's just get all members and return them. The frontend asks to hide them.
-              // BUT the prompt says "cant receive notifications for a channel that they don't have access to".
-              // That part is handled in messages.ts.
-              
-              // For the sidebar list: "people who don't have access to a channel through roles dont show up in the users sidebar"
-              // We need to filter here.
-              
-              // We need to know which roles have access.
-              // A user has access if:
-              // 1. They are the server owner
-              // 2. They have a role with ADMINISTRATOR
-              // 3. They have a role explicitly allowed in channel_permissions (or @everyone is allowed and they are not denied)
-              // 4. They are explicitly allowed in channel_permissions
-              
-              // This logic is shared with `checkChannelAccess` in messages.ts usually.
-              // Let's try to incorporate a basic check.
-              
-              // For now, let's just return all members and let the frontend filter? 
-              // No, backend should filter for security/correctness if possible, or at least to reduce data.
-              // But implementing full permission calc in SQL is hard.
-              
-              // Let's use the `permissions.ts` logic if we can, but that's per-user.
-              // Doing it for a list is expensive.
-              
-              // Let's just return all members for now, BUT we need to fix the notification logic in messages.ts.
-              // The user asked: "people who don't have access ... dont show up in the users sidebar ... and that they cant receive notifications"
-              
-              // Let's handle the notification part in messages.ts first.
-              // And for the sidebar, maybe we can just return all members and the frontend filters? 
-              // The prompt implies the sidebar should update based on the channel.
-              // So passing `channelId` to this endpoint is correct.
-              
-              // Let's implement a filter in JS after fetching.
+          // Validate channelId is a valid UUID before query to prevent crashes
+          const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+          if (uuidRegex.test(channelId)) {
+              const c = await pool.query(`SELECT is_private FROM channels WHERE id=$1::uuid`, [channelId])
+              if (c.rows[0]?.is_private) {
+                  // Valid private channel, proceed with logic below
+              }
           }
       }
 
@@ -365,52 +328,56 @@ export async function serverRoutes(app: FastifyInstance) {
       }))
       
       if (channelId) {
-          // Filter members who have access to channelId
-          const c = await pool.query(`SELECT is_private, server_id FROM channels WHERE id=$1::uuid`, [channelId])
-          if (c.rows[0]?.is_private) {
-             // Get channel permissions
-             const perms = await pool.query(`SELECT role_id, user_id, allow, deny FROM channel_permissions WHERE channel_id=$1::uuid`, [channelId])
-             const server = await pool.query(`SELECT owner_id FROM servers WHERE id=$1::uuid`, [id])
-             const ownerId = server.rows[0]?.owner_id
-             
-             // Get all roles with ADMINISTRATOR
-             const adminRoles = await pool.query(`SELECT id FROM roles WHERE server_id=$1::uuid AND (permissions & 8) = 8`, [id])
-             const adminRoleIds = new Set(adminRoles.rows.map(r => r.id))
-             
-             members = members.filter(m => {
-                 if (m.id === ownerId) return true
-                 if (m.roles.some((r: string) => adminRoleIds.has(r))) return true
+          // Validate UUID
+          const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+          if (uuidRegex.test(channelId)) {
+              // Filter members who have access to channelId
+              const c = await pool.query(`SELECT is_private, server_id FROM channels WHERE id=$1::uuid`, [channelId])
+              if (c.rows[0]?.is_private) {
+                 // Get channel permissions
+                 const perms = await pool.query(`SELECT role_id, user_id, allow, deny FROM channel_permissions WHERE channel_id=$1::uuid`, [channelId])
+                 const server = await pool.query(`SELECT owner_id FROM servers WHERE id=$1::uuid`, [id])
+                 const ownerId = server.rows[0]?.owner_id
                  
-                 // Check overrides
-                 // 1. User specific
-                 const userPerm = perms.rows.find(p => p.user_id === m.id)
-                 if (userPerm) {
-                     if ((userPerm.allow & 1024) === 1024) return true // VIEW_CHANNEL
-                     if ((userPerm.deny & 1024) === 1024) return false
-                 }
+                 // Get all roles with ADMINISTRATOR
+                 const adminRoles = await pool.query(`SELECT id FROM roles WHERE server_id=$1::uuid AND (permissions & 8) = 8`, [id])
+                 const adminRoleIds = new Set(adminRoles.rows.map(r => r.id))
                  
-                 // 2. Role specific
-                 let allow = false
-                 let deny = false
-                 for (const rid of m.roles) {
-                     const rp = perms.rows.find(p => p.role_id === rid)
-                     if (rp) {
-                         if ((rp.allow & 1024) === 1024) allow = true
-                         if ((rp.deny & 1024) === 1024) deny = true
+                 members = members.filter(m => {
+                     if (m.id === ownerId) return true
+                     if (m.roles.some((r: string) => adminRoleIds.has(r))) return true
+                     
+                     // Check overrides
+                     // 1. User specific
+                     const userPerm = perms.rows.find(p => p.user_id === m.id)
+                     if (userPerm) {
+                         if ((userPerm.allow & 1024) === 1024) return true // VIEW_CHANNEL
+                         if ((userPerm.deny & 1024) === 1024) return false
                      }
-                 }
-                 
-                 // @everyone role (usually role_id matches server_id in some schemas, or we need to find it)
-                 // In our schema, @everyone is just a role. We need to know its ID.
-                 // Usually it's the role with position 0 or name '@everyone'.
-                 // Let's assume we don't have it easily here without fetching.
-                 // But typically private channels DENY @everyone and ALLOW specific roles.
-                 
-                 if (deny) return false
-                 if (allow) return true
-                 
-                 return false // Private means default deny unless allowed
-             })
+                     
+                     // 2. Role specific
+                     let allow = false
+                     let deny = false
+                     for (const rid of m.roles) {
+                         const rp = perms.rows.find(p => p.role_id === rid)
+                         if (rp) {
+                             if ((rp.allow & 1024) === 1024) allow = true
+                             if ((rp.deny & 1024) === 1024) deny = true
+                         }
+                     }
+                     
+                     // @everyone role (usually role_id matches server_id in some schemas, or we need to find it)
+                     // In our schema, @everyone is just a role. We need to know its ID.
+                     // Usually it's the role with position 0 or name '@everyone'.
+                     // Let's assume we don't have it easily here without fetching.
+                     // But typically private channels DENY @everyone and ALLOW specific roles.
+                     
+                     if (deny) return false
+                     if (allow) return true
+                     
+                     return false // Private means default deny unless allowed
+                 })
+              }
           }
       }
       
