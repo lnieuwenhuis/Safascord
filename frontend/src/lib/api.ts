@@ -265,7 +265,7 @@ export const api = {
       body: formData,
     })
   },
-  updateProfile: async (token: string, data: { bio?: string | null; bannerColor?: string | null; bannerUrl?: string | null; avatarUrl?: string | null; customBackgroundUrl?: string | null; customBackgroundOpacity?: number | null; status?: string | null; username?: string; displayName?: string }) => {
+  updateProfile: async (token: string, data: { bio?: string | null; bannerColor?: string | null; bannerUrl?: string | null; avatarUrl?: string | null; customBackgroundUrl?: string | null; customBackgroundOpacity?: number | null; status?: string | null; username?: string; displayName?: string; notificationsQuietMode?: boolean }) => {
     return request<UserResponse>("/me/profile", {
       method: "PATCH",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
@@ -306,7 +306,28 @@ export const api = {
       body: JSON.stringify({ userId })
     })
   },
-  
+
+  // Notifications
+  getNotifications: (token: string) => get<{ notifications: any[] }>("/notifications", { headers: { Authorization: `Bearer ${token}` } }),
+  markNotificationRead: async (token: string, id: string) => {
+    return request<BasicResponse>(`/notifications/${id}/read`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}` }
+    })
+  },
+  markAllNotificationsRead: async (token: string) => {
+    return request<BasicResponse>("/notifications/read-all", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}` }
+    })
+  },
+  deleteNotification: async (token: string, id: string) => {
+    return request<BasicResponse>(`/notifications/${id}`, {
+      method: "DELETE",
+      headers: { Authorization: `Bearer ${token}` }
+    })
+  },
+
   // Messages
   deleteMessage: async (token: string, id: string) => {
     return request<BasicResponse>(`/messages/${id}`, {

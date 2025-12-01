@@ -8,6 +8,8 @@ import CreateServerModal from "./CreateServerModal"
 import EditServerModal from "./EditServerModal"
 import type { Server } from "@/types"
 
+import Inbox from "./Inbox"
+
 export default function ServerSidebar() {
   const navigate = useNavigate()
   const [servers, setServers] = useState<Server[]>([])
@@ -121,6 +123,9 @@ export default function ServerSidebar() {
         onUpdated={(s) => setServers((prev) => prev.map((x) => x.id === s.id ? s : x))}
         initialData={activeServer}
       />
+      <div className="mt-auto pb-2">
+        <Inbox />
+      </div>
     </aside>
   )
 }

@@ -10,7 +10,7 @@ export async function userRoutes(app: FastifyInstance) {
     try {
       const payload = jwt.verify(auth.replace(/^Bearer\s+/i, ""), JWT_SECRET) as any
       const r = await pool.query(
-        `SELECT id::text AS id, username, email, display_name, bio, banner_color, banner_url, avatar_url, custom_background_url, custom_background_opacity, status, discriminator, allow_dms_from_strangers AS "allowDmsFromStrangers"
+        `SELECT id::text AS id, username, email, display_name, bio, banner_color, banner_url, avatar_url, custom_background_url, custom_background_opacity, status, discriminator, allow_dms_from_strangers AS "allowDmsFromStrangers", notifications_quiet_mode AS "notificationsQuietMode"
          FROM users WHERE id = $1::uuid`,
         [payload.sub]
       )
@@ -29,7 +29,8 @@ export async function userRoutes(app: FastifyInstance) {
         customBackgroundOpacity: u.custom_background_opacity,
         status: u.status,
         discriminator: u.discriminator,
-        allowDmsFromStrangers: u.allowDmsFromStrangers
+        allowDmsFromStrangers: u.allowDmsFromStrangers,
+        notificationsQuietMode: u.notificationsQuietMode
       } }
     } catch {
       return { error: "Unauthorized" }
@@ -118,12 +119,18 @@ export async function userRoutes(app: FastifyInstance) {
       if (username !== undefined) { fields.push(`username=$${idx++}`); values.push(username) }
       if (displayName !== undefined) { fields.push(`display_name=$${idx++}`); values.push(displayName) }
       
+      // Settings
+      if (body.notificationsQuietMode !== undefined) {
+         fields.push(`notifications_quiet_mode=$${idx++}`)
+         values.push(body.notificationsQuietMode)
+      }
+      
       if (fields.length === 0) return { error: "No fields" }
       
       values.push(payload.sub)
       const r = await pool.query(
         `UPDATE users SET ${fields.join(", ")} WHERE id=$${idx}::uuid
-         RETURNING id::text AS id, username, email, display_name, bio, banner_color, banner_url, avatar_url, custom_background_url, custom_background_opacity, status`,
+         RETURNING id::text AS id, username, email, display_name, bio, banner_color, banner_url, avatar_url, custom_background_url, custom_background_opacity, status, notifications_quiet_mode AS "notificationsQuietMode"`,
         values
       )
       const u = r.rows[0]
@@ -138,7 +145,8 @@ export async function userRoutes(app: FastifyInstance) {
         avatarUrl: u.avatar_url,
         customBackgroundUrl: u.custom_background_url,
         customBackgroundOpacity: u.custom_background_opacity,
-        status: u.status
+        status: u.status,
+        notificationsQuietMode: u.notificationsQuietMode
       } }
     } catch {
       return { error: "Unauthorized" }

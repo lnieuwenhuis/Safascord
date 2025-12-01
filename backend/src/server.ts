@@ -20,6 +20,7 @@ import { messageRoutes } from "./routes/messages.js"
 import { uploadRoutes } from "./routes/uploads.js"
 import { miscRoutes } from "./routes/misc.js"
 import { statsRoutes } from "./routes/stats.js"
+import { notificationRoutes } from "./routes/notifications.js"
 import { recordRequest, startMetricsCollector } from "./lib/stats.js"
 
 const app = Fastify({ 
@@ -120,6 +121,7 @@ async function start() {
     await app.register(uploadRoutes)
     await app.register(miscRoutes)
     await app.register(statsRoutes)
+    await app.register(notificationRoutes)
   } catch (err) {
     console.error("Failed to register routes:", err)
     process.exit(1)

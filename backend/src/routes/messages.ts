@@ -180,6 +180,7 @@ export async function messageRoutes(app: FastifyInstance) {
       const avatar = ur.rows[0]?.avatar_url as string | null
       
       let roleColor: string | undefined
+      const targetServerId = c.rows[0].server_id
       if (c.rows[0].type !== 'dm') {
           try {
              const rc = await pool.query(
@@ -193,6 +194,43 @@ export async function messageRoutes(app: FastifyInstance) {
              roleColor = rc.rows[0]?.color
           } catch {}
       }
+
+      // --- NOTIFICATIONS & MENTIONS ---
+      
+      // 1. Handle DM Notifications (Notify all other members)
+       if (c.rows[0].type === 'dm') {
+           const members = await pool.query(`SELECT user_id FROM channel_members WHERE channel_id=$1::uuid AND user_id!=$2::uuid`, [channelId, payload.sub])
+           for (const mem of members.rows) {
+              await createNotification(mem.user_id, 'message', m.id, 'dm', `New message from ${sender}`, channelId)
+           }
+       }
+ 
+       // 2. Handle Mentions in Server Channels
+       if (c.rows[0].type !== 'dm' && content) {
+           // Regex to find @username
+           // We look for @Username (word characters)
+           // This is a simple heuristic. Ideally we'd use unique IDs or discriminators.
+           const mentions = content.match(/@([a-zA-Z0-9_]+)/g)
+           if (mentions) {
+              const uniqueNames = [...new Set(mentions.map((m: string) => m.slice(1)))] // remove @
+              for (const name of uniqueNames) {
+                 // Find user in this server with this username
+                 const u = await pool.query(
+                     `SELECT u.id FROM users u
+                      JOIN server_members sm ON sm.user_id = u.id
+                      WHERE sm.server_id = $1::uuid AND u.username = $2
+                      LIMIT 1`,
+                     [targetServerId, name]
+                 )
+                 if (u.rowCount && u.rowCount > 0) {
+                     const mentionedUserId = u.rows[0].id
+                     if (mentionedUserId !== payload.sub) {
+                         await createNotification(mentionedUserId, 'mention', m.id, 'message', `You were mentioned by ${sender} in #${channel}`, channelId)
+                     }
+                 }
+              }
+           }
+       }
 
       const msgData = { 
         id: m.id, 
@@ -213,6 +251,42 @@ export async function messageRoutes(app: FastifyInstance) {
       return { error: `Unauthorized: ${e}` }
     }
   })
+
+async function createNotification(userId: string, type: string, sourceId: string, sourceType: string, content: string, channelId?: string) {
+    try {
+        // Check quiet mode
+        const u = await pool.query(`SELECT notifications_quiet_mode FROM users WHERE id=$1::uuid`, [userId])
+        const quiet = u.rows[0]?.notifications_quiet_mode || false
+        
+        const r = await pool.query(
+            `INSERT INTO notifications (user_id, type, source_id, source_type, content, channel_id)
+             VALUES ($1::uuid, $2, $3::uuid, $4, $5, $6::uuid)
+             RETURNING id, created_at`,
+            [userId, type, sourceId, sourceType, content, channelId || null]
+        )
+        const n = r.rows[0]
+        
+        await redis.publish("messages", JSON.stringify({ 
+            channel: `user:${userId}`, 
+            data: { 
+                type: "notification", 
+                notification: { 
+                    id: n.id, 
+                    type, 
+                    sourceId, 
+                    sourceType, 
+                    content, 
+                    channelId,
+                    read: false, 
+                    ts: n.created_at,
+                    quiet 
+                } 
+            } 
+        }))
+    } catch (e) {
+        console.error("Failed to create notification", e)
+    }
+}
 
   app.get("/api/socket-info", async (req: FastifyRequest<{ Querystring: { channel?: string } }>) => {
     const channel = req.query.channel || ""

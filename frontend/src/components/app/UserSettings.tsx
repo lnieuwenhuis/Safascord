@@ -1,3 +1,4 @@
+import { Switch } from "@/components/ui/switch"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { X, LogOut } from "lucide-react"
@@ -14,9 +15,11 @@ export default function UserSettings({ open, onClose }: { open: boolean; onClose
   const [confirmOpen, setConfirmOpen] = useState(false)
   const { user, logout } = useAuth()
   const [name, setName] = useState("")
+  const [quietMode, setQuietMode] = useState(false)
   const [saving, setSaving] = useState(false)
   useEffect(() => {
     setName(user?.displayName || user?.username || "")
+    setQuietMode(user?.notificationsQuietMode || false)
   }, [user])
   if (!open) return null
   return createPortal(
@@ -28,6 +31,7 @@ export default function UserSettings({ open, onClose }: { open: boolean; onClose
             <button className={`w-full rounded px-2 py-1 text-left text-sm hover:bg-accent hover:text-accent-foreground ${section === 'account' ? 'bg-accent text-accent-foreground' : ''}`} onClick={() => setSection('account')}>My Account</button>
             <button className={`w-full rounded px-2 py-1 text-left text-sm hover:bg-accent hover:text-accent-foreground ${section === 'appearance' ? 'bg-accent text-accent-foreground' : ''}`} onClick={() => setSection('appearance')}>Appearance</button>
             <button className={`w-full rounded px-2 py-1 text-left text-sm hover:bg-accent hover:text-accent-foreground ${section === 'chat' ? 'bg-accent text-accent-foreground' : ''}`} onClick={() => setSection('chat')}>Chat</button>
+            <button className={`w-full rounded px-2 py-1 text-left text-sm hover:bg-accent hover:text-accent-foreground ${section === 'notifications' ? 'bg-accent text-accent-foreground' : ''}`} onClick={() => setSection('notifications')}>Notifications</button>
             <button className={`w-full rounded px-2 py-1 text-left text-sm hover:bg-accent hover:text-accent-foreground ${section === 'voice' ? 'bg-accent text-accent-foreground' : ''}`} onClick={() => setSection('voice')}>Voice & Video</button>
             <button className={`w-full rounded px-2 py-1 text-left text-sm hover:bg-accent hover:text-accent-foreground ${section === 'keybinds' ? 'bg-accent text-accent-foreground' : ''}`} onClick={() => setSection('keybinds')}>Keybinds</button>
             <button className={`w-full rounded px-2 py-1 text-left text-sm hover:bg-accent hover:text-accent-foreground ${section === 'language' ? 'bg-accent text-accent-foreground' : ''}`} onClick={() => setSection('language')}>Language</button>
@@ -83,6 +87,17 @@ export default function UserSettings({ open, onClose }: { open: boolean; onClose
                 </div>
               </div>
             )}
+            {section === 'notifications' && (
+              <div className="space-y-4">
+                <div className="rounded-lg border border-border bg-card p-4 text-card-foreground flex items-center justify-between">
+                  <div>
+                     <div className="text-sm font-medium">Quiet Mode</div>
+                     <div className="text-xs text-muted-foreground mt-1">Disable animations and sounds for notifications.</div>
+                  </div>
+                  <Switch checked={quietMode} onCheckedChange={setQuietMode} />
+                </div>
+              </div>
+            )}
             {section === 'voice' && (
               <div className="space-y-4">
                 <div className="rounded-lg border border-border bg-card p-4 text-card-foreground">
@@ -128,7 +143,7 @@ export default function UserSettings({ open, onClose }: { open: boolean; onClose
                 if (!token) { onClose(); return }
                 setSaving(true)
                 try {
-                  const r = await api.updateDisplayName(token, name)
+                  const r = await api.updateProfile(token, { displayName: name, notificationsQuietMode: quietMode })
                   if (r.user) localStorage.setItem("user", JSON.stringify(r.user))
                 } finally {
                   setSaving(false)

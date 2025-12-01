@@ -17,4 +17,17 @@ export interface User {
   allowDmsFromStrangers?: boolean
   friendshipStatus?: 'none' | 'friends' | 'outgoing' | 'incoming' | 'blocked'
   friendRequestId?: string
+  notificationsQuietMode?: boolean
+}
+
+export interface Notification {
+  id: string
+  type: 'mention' | 'message' | 'friend_request'
+  sourceId: string
+  sourceType: 'message' | 'friendship' | 'dm'
+  channelId?: string
+  content?: string
+  read: boolean
+  ts: string
+  quiet?: boolean
 }

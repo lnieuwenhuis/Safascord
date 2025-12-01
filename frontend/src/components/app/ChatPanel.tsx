@@ -56,6 +56,83 @@ export default function ChatPanel({ variant, channelName, guildName, guildId, on
     }
   }, [variant, channelName, token])
 
+  const [showMentionMenu, setShowMentionMenu] = useState(false)
+  const [mentionQuery, setMentionQuery] = useState("")
+  const [members, setMembers] = useState<{id: string, username: string, displayName: string, avatarUrl: string}[]>([])
+  const [mentionIndex, setMentionIndex] = useState(0)
+
+  useEffect(() => {
+    if (variant === "guild" && guildId && token) {
+      api.getServerMembers(token, guildId).then(r => {
+        setMembers(r.members)
+      }).catch(() => setMembers([]))
+    }
+  }, [guildId, variant, token])
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (showMentionMenu) {
+      if (e.key === "ArrowDown") {
+        e.preventDefault()
+        setMentionIndex(i => (i + 1) % filteredMembers.length)
+        return
+      }
+      if (e.key === "ArrowUp") {
+        e.preventDefault()
+        setMentionIndex(i => (i - 1 + filteredMembers.length) % filteredMembers.length)
+        return
+      }
+      if (e.key === "Enter" || e.key === "Tab") {
+        e.preventDefault()
+        insertMention(filteredMembers[mentionIndex])
+        return
+      }
+      if (e.key === "Escape") {
+        setShowMentionMenu(false)
+        return
+      }
+    }
+    if (e.key === "Enter") send()
+  }
+
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const val = e.target.value
+    setText(val)
+    
+    // Detect mention
+    const lastWord = val.split(" ").pop() || ""
+    if (lastWord.startsWith("@")) {
+      const query = lastWord.slice(1)
+      setMentionQuery(query)
+      setShowMentionMenu(true)
+      setMentionIndex(0)
+    } else {
+      setShowMentionMenu(false)
+    }
+
+    const ws = wsRef.current
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ type: "typing.start", channel: channelName, user: display, userId: user?.id }))
+      if (idleRef.current) clearTimeout(idleRef.current)
+      idleRef.current = setTimeout(() => {
+        ws.send(JSON.stringify({ type: "typing.stop", channel: channelName, user: display, userId: user?.id }))
+        idleRef.current = null
+      }, 1200)
+    }
+  }
+
+  const filteredMembers = members.filter(m => 
+    m.username.toLowerCase().includes(mentionQuery.toLowerCase()) || 
+    m.displayName.toLowerCase().includes(mentionQuery.toLowerCase())
+  ).slice(0, 5)
+
+  const insertMention = (member: { username: string }) => {
+    const words = text.split(" ")
+    words.pop()
+    setText(words.join(" ") + (words.length > 0 ? " " : "") + `@${member.username} `)
+    setShowMentionMenu(false)
+    // focus input?
+  }
+
   const display = (user && (user.displayName || user.username)) || "You"
   const myAvatar = user?.avatarUrl
 
@@ -452,9 +529,10 @@ export default function ChatPanel({ variant, channelName, guildName, guildId, on
                     {g.messages.map((it, idx) => {
                       const isEditing = editingId === it.id
                       const isMyMessage = isMe || (user && g.userId === user.id)
+                      const isMentioned = user && it.text.includes(`@${user.username}`)
 
                       return (
-                        <div key={it.id} className={cn("relative group/msg hover:bg-black/5 -mx-4 px-4 py-0.5", idx > 0 && "mt-0.5")}>
+                        <div key={it.id} className={cn("relative group/msg hover:bg-black/5 -mx-4 px-4 py-0.5", idx > 0 && "mt-0.5", isMentioned && "bg-blue-500/10 border-l-2 border-blue-500 hover:bg-blue-500/15")}>
                           {isEditing ? (
                              <div className="flex gap-2 items-center py-1">
                                <Input 
@@ -473,8 +551,14 @@ export default function ChatPanel({ variant, channelName, guildName, guildId, on
                                <div className="text-xs text-muted-foreground">escape to cancel • enter to save</div>
                              </div>
                           ) : (
-                             <div className="text-sm text-foreground whitespace-pre-wrap wrap-break-words leading-snug pr-12">
-                                {it.text}
+                             <div className={cn("text-sm text-foreground whitespace-pre-wrap wrap-break-words leading-snug pr-12", isMentioned && "bg-blue-500/10 p-0.5 rounded inline-block w-full")}>
+                                {it.text.split(/(@[a-zA-Z0-9_]+)/g).map((part, i) => {
+                                    if (part.startsWith('@')) {
+                                        const isMe = user && part === `@${user.username}`
+                                        return <span key={i} className={cn("bg-primary/10 text-primary rounded px-0.5 font-medium", isMe && "bg-yellow-500/20 text-yellow-200")}>{part}</span>
+                                    }
+                                    return part
+                                })}
                              </div>
                           )}
                           
@@ -546,13 +630,43 @@ export default function ChatPanel({ variant, channelName, guildName, guildId, on
           <Button variant="ghost" size="icon" className="text-muted-foreground hover:text-foreground" onClick={() => fileInputRef.current?.click()}>
             <Plus className="h-5 w-5" />
           </Button>
-          <Input
-            className="border-0 bg-muted/50 focus-visible:ring-1 focus-visible:ring-ring"
-            placeholder={!canSend ? "You do not have permission to send messages in this channel." : (variant === "guild" ? `Message #${channelName}` : `Message ${dmUser ? (dmUser.displayName || dmUser.username) : "Direct Message"}`)}
-            disabled={!canSend || isUploading}
-            value={text}
-            maxLength={5000}
-            onPaste={(e) => {
+          <div className="relative w-full">
+            {showMentionMenu && filteredMembers.length > 0 && (
+               <div className="absolute bottom-full left-0 w-64 bg-popover border border-border rounded-md shadow-lg mb-2 overflow-hidden z-50">
+                 <div className="text-xs font-bold text-muted-foreground px-3 py-2 bg-muted/50">MEMBERS MATCHING @{mentionQuery}</div>
+                 {filteredMembers.map((m, i) => (
+                   <button
+                     key={m.id}
+                     className={cn(
+                       "w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-accent hover:text-accent-foreground text-left",
+                       i === mentionIndex && "bg-accent text-accent-foreground"
+                     )}
+                     onClick={() => insertMention(m)}
+                   >
+                     <div className="h-6 w-6 rounded-full bg-primary/20 overflow-hidden">
+                       {m.avatarUrl ? (
+                         <img src={getFullUrl(m.avatarUrl) || ""} alt={m.username} className="h-full w-full object-cover" />
+                       ) : (
+                         <div className="h-full w-full flex items-center justify-center text-[10px] font-bold bg-primary text-primary-foreground">
+                           {m.username.substring(0, 2).toUpperCase()}
+                         </div>
+                       )}
+                     </div>
+                     <div className="flex flex-col">
+                        <span className="font-medium">{m.displayName}</span>
+                        <span className="text-xs text-muted-foreground">@{m.username}</span>
+                     </div>
+                   </button>
+                 ))}
+               </div>
+            )}
+            <Input
+              className="border-0 bg-muted/50 focus-visible:ring-1 focus-visible:ring-ring"
+              placeholder={!canSend ? "You do not have permission to send messages in this channel." : (variant === "guild" ? `Message #${channelName}` : `Message ${dmUser ? (dmUser.displayName || dmUser.username) : "Direct Message"}`)}
+              disabled={!canSend || isUploading}
+              value={text}
+              maxLength={5000}
+              onPaste={(e) => {
                const items = e.clipboardData?.items
                if (!items) return
                for (let i = 0; i < items.length; i++) {
@@ -570,22 +684,10 @@ export default function ChatPanel({ variant, channelName, guildName, guildId, on
                   }
                }
             }}
-            onChange={(e) => {
-              setText(e.target.value)
-              const ws = wsRef.current
-              if (ws && ws.readyState === WebSocket.OPEN) {
-                ws.send(JSON.stringify({ type: "typing.start", channel: channelName, user: display, userId: user?.id }))
-                if (idleRef.current) clearTimeout(idleRef.current)
-                idleRef.current = setTimeout(() => {
-                  ws.send(JSON.stringify({ type: "typing.stop", channel: channelName, user: display, userId: user?.id }))
-                  idleRef.current = null
-                }, 1200)
-              }
-            }}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") send()
-            }}
+            onChange={handleInputChange}
+            onKeyDown={handleKeyDown}
           />
+          </div>
           <Button variant="brand" onClick={send} disabled={!canSend}>Send</Button>
         </div>
         {text.length > 4000 && (

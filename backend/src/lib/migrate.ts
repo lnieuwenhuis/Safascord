@@ -150,8 +150,34 @@ export async function runMigrations() {
 
     // Performance Indexes
     await pool.query(`CREATE INDEX IF NOT EXISTS idx_server_member_roles_user_server ON server_member_roles(user_id, server_id);`)
+
+    // Notifications
+    await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS notifications_quiet_mode BOOLEAN DEFAULT FALSE;`)
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS notifications (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        type VARCHAR(50) NOT NULL,
+        source_id UUID,
+        source_type VARCHAR(50),
+        channel_id UUID,
+        content TEXT,
+        read BOOLEAN DEFAULT FALSE,
+        created_at TIMESTAMPTZ DEFAULT now()
+      );
+    `)
     
+    // Add channel_id if missing (for existing table)
+    try {
+      await pool.query(`ALTER TABLE notifications ADD COLUMN IF NOT EXISTS channel_id UUID;`)
+    } catch {}
+
+    // Message Attachments (ensure schema consistency)
+    await pool.query(`ALTER TABLE messages ADD COLUMN IF NOT EXISTS attachment_url TEXT;`)
+    
+    console.log("Migrations complete")
   } catch (e) {
-    console.error("Migration failed", e)
+    console.error("Migration error:", e)
+    process.exit(1)
   }
 }

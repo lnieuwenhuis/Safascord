@@ -8,9 +8,11 @@ import ConfirmDialog from "./ConfirmDialog"
 import { Input } from "@/components/ui/input"
 import type { Server, ChannelSection } from "@/types"
 import ChannelModal from "./ChannelModal"
+import { useNotifications } from "../NotificationProvider"
 
 export default function ChannelSidebar({ guildId, activeChannelId }: { guildId?: string, activeChannelId?: string }) {
   const navigate = useNavigate()
+  const { notifications } = useNotifications()
   const [sections, setSections] = useState<ChannelSection[]>([])
   const [server, setServer] = useState<Server | null>(null)
   const [menu, setMenu] = useState<{ channel: string; x: number; y: number } | null>(null)
@@ -65,6 +67,10 @@ export default function ChannelSidebar({ guildId, activeChannelId }: { guildId?:
      }
   }
 
+  const getUnreadCount = (channelId: string) => {
+      return notifications.filter(n => !n.read && n.channelId === channelId).length
+  }
+
   return (
     <aside className="flex h-dvh w-full flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground">
       {server?.bannerUrl && (
@@ -90,7 +96,9 @@ export default function ChannelSidebar({ guildId, activeChannelId }: { guildId?:
             <div key={i}>
               <div className="px-2 text-xs uppercase text-muted-foreground">{s.title}</div>
               <ul className="mt-1 space-y-1">
-                {s.channels.map((c) => (
+                {s.channels.map((c) => {
+                  const unread = getUnreadCount(c.id)
+                  return (
                   <li
                     key={c.id}
                     className={`flex cursor-pointer items-center gap-2 rounded px-2 py-1 ${c.name === activeChannelId ? 'bg-sidebar-accent text-sidebar-accent-foreground' : 'hover:bg-sidebar-accent hover:text-sidebar-accent-foreground'}`}
@@ -107,9 +115,14 @@ export default function ChannelSidebar({ guildId, activeChannelId }: { guildId?:
                     }}
                   >
                     <Hash className={`h-4 w-4 ${c.name === activeChannelId ? 'text-sidebar-accent-foreground' : 'text-muted-foreground'}`} />
-                    <span className="text-sm">{c.name}</span>
+                    <span className="text-sm flex-1 truncate">{c.name}</span>
+                    {unread > 0 && (
+                       <div className="flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white">
+                         {unread > 99 ? "99+" : unread}
+                       </div>
+                    )}
                   </li>
-                ))}
+                )})}
               </ul>
             </div>
           ))}
