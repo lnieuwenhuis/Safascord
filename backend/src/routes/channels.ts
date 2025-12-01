@@ -269,6 +269,14 @@ export async function channelRoutes(app: FastifyInstance) {
                      AND smr.server_id = c.server_id
                      AND cp.can_view = TRUE
                 )
+                OR EXISTS (
+                   SELECT 1 
+                   FROM server_member_roles smr
+                   JOIN roles r ON r.id = smr.role_id
+                   WHERE smr.user_id = $2::uuid 
+                     AND smr.server_id = c.server_id 
+                     AND (r.can_manage_channels = TRUE OR r.can_manage_server = TRUE)
+                )
               )
             `
             params.push(userId)

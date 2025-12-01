@@ -149,7 +149,17 @@ export async function messageRoutes(app: FastifyInstance) {
             const serv = await pool.query(`SELECT owner_id FROM servers WHERE id=$1::uuid`, [c.rows[0].server_id])
             const isOwner = serv.rows[0]?.owner_id === payload.sub
             
-            if (!canSend && !isOwner) return { error: "Missing permissions" }
+            // Check if admin
+            const admin = await pool.query(
+               `SELECT 1 FROM server_member_roles smr
+                JOIN roles r ON r.id = smr.role_id
+                WHERE smr.user_id = $1::uuid AND smr.server_id = $2::uuid
+                  AND (r.can_manage_server = TRUE OR r.can_manage_channels = TRUE)`,
+               [payload.sub, c.rows[0].server_id]
+            )
+            const isAdmin = admin.rowCount && admin.rowCount > 0
+            
+            if (!canSend && !isOwner && !isAdmin) return { error: "Missing permissions" }
          }
       }
 

@@ -77,6 +77,9 @@ export async function authRoutes(app: FastifyInstance) {
              const rr = await pool.query(`SELECT id FROM roles WHERE server_id=$1::uuid AND name='Member' LIMIT 1`, [sid])
              const rid = rr.rows[0]?.id as string | undefined
              await pool.query(`INSERT INTO server_members (server_id, user_id, role_id) VALUES ($1::uuid,$2::uuid,$3::uuid) ON CONFLICT DO NOTHING`, [sid, u.id, rid || null])
+             if (rid) {
+               await pool.query(`INSERT INTO server_member_roles (server_id, user_id, role_id) VALUES ($1::uuid,$2::uuid,$3::uuid) ON CONFLICT DO NOTHING`, [sid, u.id, rid])
+             }
           }
         } catch (err) {
            console.error("Error adding to default server:", err)
@@ -127,6 +130,9 @@ export async function authRoutes(app: FastifyInstance) {
         const rr = await pool.query(`SELECT id FROM roles WHERE server_id=$1::uuid AND name='Member' LIMIT 1`, [sid])
         const rid = rr.rows[0]?.id as string | undefined
         await pool.query(`INSERT INTO server_members (server_id, user_id, role_id) VALUES ($1::uuid,$2::uuid,$3::uuid) ON CONFLICT DO NOTHING`, [sid, user.id, rid || null])
+        if (rid) {
+           await pool.query(`INSERT INTO server_member_roles (server_id, user_id, role_id) VALUES ($1::uuid,$2::uuid,$3::uuid) ON CONFLICT DO NOTHING`, [sid, user.id, rid])
+        }
       }
     } catch {}
     const token = signToken({ id: user.id, username: user.username })
@@ -151,6 +157,9 @@ export async function authRoutes(app: FastifyInstance) {
            const rr = await pool.query(`SELECT id FROM roles WHERE server_id=$1::uuid AND name='Member' LIMIT 1`, [sid])
            const rid = rr.rows[0]?.id as string | undefined
            await pool.query(`INSERT INTO server_members (server_id, user_id, role_id) VALUES ($1::uuid,$2::uuid,$3::uuid) ON CONFLICT DO NOTHING`, [sid, user.id, rid || null])
+           if (rid) {
+              await pool.query(`INSERT INTO server_member_roles (server_id, user_id, role_id) VALUES ($1::uuid,$2::uuid,$3::uuid) ON CONFLICT DO NOTHING`, [sid, user.id, rid])
+           }
         }
       }
     } catch {}

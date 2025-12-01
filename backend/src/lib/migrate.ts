@@ -121,16 +121,12 @@ export async function runMigrations() {
        await pool.query(`UPDATE server_members SET role_id=$1::uuid WHERE server_id=$2::uuid AND user_id!=$3::uuid AND role_id IS NULL`, [memberRoleId, s.id, s.owner_id])
     }
 
-    // Migrate roles to server_member_roles
-    const smrCount = await pool.query(`SELECT count(*) as c FROM server_member_roles`)
-    if (parseInt(smrCount.rows[0].c) === 0) {
-       console.log("Migrating roles to server_member_roles...")
-       await pool.query(`
-         INSERT INTO server_member_roles (server_id, user_id, role_id)
-         SELECT server_id, user_id, role_id FROM server_members WHERE role_id IS NOT NULL
-         ON CONFLICT DO NOTHING
-       `)
-    }
+    // Migrate roles to server_member_roles (Sync ensure)
+    await pool.query(`
+      INSERT INTO server_member_roles (server_id, user_id, role_id)
+      SELECT server_id, user_id, role_id FROM server_members WHERE role_id IS NOT NULL
+      ON CONFLICT DO NOTHING
+    `)
 
     // System Metrics for Historical Graphs
     await pool.query(`

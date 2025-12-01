@@ -5,11 +5,16 @@ import { s3, BUCKET_NAME, STORAGE_PUBLIC_URL } from "../lib/s3.js"
 import { Readable } from "stream"
 import { pool } from "../lib/db.js"
 
+type ObjectType = {
+  Key: string;
+  LastModified: Date;
+}
+
 async function cleanupStorage() {
   try {
     console.log("Starting storage cleanup...")
     // 1. List all objects
-    let objects: { Key: string; LastModified: Date }[] = []
+    let objects: ObjectType[] = []
     let continuationToken: string | undefined
     
     do {
@@ -18,7 +23,7 @@ async function cleanupStorage() {
          ContinuationToken: continuationToken 
        }))
        if (res.Contents) {
-         objects.push(...res.Contents.map(o => ({ Key: o.Key!, LastModified: o.LastModified! })))
+         objects.push(...res.Contents.map((o: ObjectType) => ({ Key: o.Key!, LastModified: o.LastModified! })))
        }
        continuationToken = res.NextContinuationToken
     } while (continuationToken)
