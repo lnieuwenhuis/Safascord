@@ -65,7 +65,8 @@ export async function messageRoutes(app: FastifyInstance) {
                 COALESCE(users.display_name, users.username) AS user, 
                 users.avatar_url AS user_avatar,
                 users.id::text AS user_id,
-                messages.content AS text, 
+                messages.content AS text,
+                messages.attachment_url,
                 messages.created_at AS ts,
                 (
                   SELECT r.color 
@@ -84,8 +85,8 @@ export async function messageRoutes(app: FastifyInstance) {
          LIMIT $3`,
         [channelId, before, limit]
       )
-      const rows = r.rows as { id: string; user: string | null; user_avatar: string | null; user_id: string | null; text: string; ts: string; role_color: string | null }[]
-      return { messages: rows.reverse().map(m => ({ id: m.id, user: m.user ?? "User", userAvatar: m.user_avatar, userId: m.user_id, text: m.text, ts: m.ts, roleColor: m.role_color || undefined })) }
+      const rows = r.rows as { id: string; user: string | null; user_avatar: string | null; user_id: string | null; text: string; attachment_url: string | null; ts: string; role_color: string | null }[]
+      return { messages: rows.reverse().map(m => ({ id: m.id, user: m.user ?? "User", userAvatar: m.user_avatar, userId: m.user_id, text: m.text, attachmentUrl: m.attachment_url || undefined, ts: m.ts, roleColor: m.role_color || undefined })) }
     } catch (e) {
       console.error("GET /api/messages error:", e)
       return { messages: [] }
@@ -95,9 +96,9 @@ export async function messageRoutes(app: FastifyInstance) {
   app.post("/api/messages", async (req) => {
     const auth = (req.headers as any).authorization as string | undefined
     const body = req.body as any
-    const { channel, content, serverId } = body || {}
-    if (!auth || !channel || !content) return { error: "Bad request" }
-    if (content.length > 5000) return { error: "Message too long (max 5000 characters)" }
+    const { channel, content, serverId, attachmentUrl } = body || {}
+    if (!auth || !channel || (!content && !attachmentUrl)) return { error: "Bad request" }
+    if (content && content.length > 5000) return { error: "Message too long (max 5000 characters)" }
     try {
       const payload = jwt.verify(auth.replace(/^Bearer\s+/i, ""), JWT_SECRET) as any
       
@@ -152,12 +153,12 @@ export async function messageRoutes(app: FastifyInstance) {
       }
 
       const r = await pool.query(
-        `INSERT INTO messages (channel_id, user_id, content)
-         VALUES ($1::uuid, $2::uuid, $3::text)
-         RETURNING id::text AS id, content AS text, created_at AS ts`,
-        [channelId, payload.sub, content]
+        `INSERT INTO messages (channel_id, user_id, content, attachment_url)
+         VALUES ($1::uuid, $2::uuid, $3::text, $4::text)
+         RETURNING id::text AS id, content AS text, attachment_url, created_at AS ts`,
+        [channelId, payload.sub, content || "", attachmentUrl || null]
       )
-      const m = r.rows[0] as { id: string; text: string; ts: string }
+      const m = r.rows[0] as { id: string; text: string; attachment_url: string | null; ts: string }
       
       const ur = await pool.query(
         `SELECT COALESCE(display_name, username) AS name, avatar_url FROM users WHERE id=$1::uuid LIMIT 1`,
@@ -181,13 +182,20 @@ export async function messageRoutes(app: FastifyInstance) {
           } catch {}
       }
 
+      const msgData = { 
+        id: m.id, 
+        text: m.text, 
+        attachmentUrl: m.attachment_url || undefined, 
+        ts: m.ts 
+      }
+
       try {
-        await redis.publish("messages", JSON.stringify({ channel: channelId, data: { type: "message", channel: channelId, message: m, user: sender, userAvatar: avatar, userId: payload.sub, roleColor } }))
+        await redis.publish("messages", JSON.stringify({ channel: channelId, data: { type: "message", channel: channelId, message: msgData, user: sender, userAvatar: avatar, userId: payload.sub, roleColor } }))
         if (channel !== channelId) {
-           await redis.publish("messages", JSON.stringify({ channel, data: { type: "message", channel, message: m, user: sender, userAvatar: avatar, userId: payload.sub, roleColor } }))
+           await redis.publish("messages", JSON.stringify({ channel, data: { type: "message", channel, message: msgData, user: sender, userAvatar: avatar, userId: payload.sub, roleColor } }))
         }
       } catch {}
-      return { message: { ...m, roleColor } }
+      return { message: { ...msgData, roleColor } }
     } catch (e) {
       console.error("POST /api/messages error:", e)
       return { error: `Unauthorized: ${e}` }

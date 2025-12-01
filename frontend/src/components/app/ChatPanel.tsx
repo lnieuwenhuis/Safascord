@@ -1,6 +1,6 @@
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
-import { Hash, MessageSquare, Menu, Users, Pencil, Trash } from "lucide-react"
+import { Hash, MessageSquare, Menu, Users, Pencil, Trash, Plus, X, FileIcon } from "lucide-react"
 import { useEffect, useRef, useState } from "react"
 import { api, getFullUrl } from "@/lib/api"
 import { useAuth } from "@/hooks/useAuth"
@@ -29,6 +29,11 @@ export default function ChatPanel({ variant, channelName, guildName, guildId, on
   const [loadingMore, setLoadingMore] = useState(false)
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null)
   const [dmUser, setDmUser] = useState<{ username: string; displayName: string } | null>(null)
+  
+  // File upload state
+  const fileInputRef = useRef<HTMLInputElement>(null)
+  const [selectedFile, setSelectedFile] = useState<File | null>(null)
+  const [isUploading, setIsUploading] = useState(false)
   
   // Editing state
   const [editingId, setEditingId] = useState<string | null>(null)
@@ -145,7 +150,7 @@ export default function ChatPanel({ variant, channelName, guildName, guildId, on
           userAvatar?: string; 
           userId?: string; 
           active?: boolean; 
-          message?: { id: string; text: string; ts?: string }; 
+          message?: { id: string; text: string; attachmentUrl?: string; ts?: string }; 
           messageId?: string;
           roleColor?: string 
         }
@@ -170,6 +175,7 @@ export default function ChatPanel({ variant, channelName, guildName, guildId, on
               userAvatar: d.userAvatar,
               userId: d.userId,
               text: d.message!.text, 
+              attachmentUrl: d.message!.attachmentUrl,
               ts: d.message!.ts || new Date().toISOString(),
               roleColor: d.roleColor
             }]
@@ -202,9 +208,26 @@ export default function ChatPanel({ variant, channelName, guildName, guildId, on
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [channelName])
 
+  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    
+    if (file.size > 50 * 1024 * 1024) {
+       alert("File too large (max 50MB)")
+       return
+    }
+    
+    setSelectedFile(file)
+  }
+  
+  const clearFile = () => {
+    setSelectedFile(null)
+    if (fileInputRef.current) fileInputRef.current.value = ""
+  }
+
   const send = async () => {
     const t = text.trim()
-    if (!t) return
+    if (!t && !selectedFile) return
     setText("")
     // stop typing immediately when sending
     const ws = wsRef.current
@@ -213,9 +236,26 @@ export default function ChatPanel({ variant, channelName, guildName, guildId, on
         ws.send(JSON.stringify({ type: "typing.stop", channel: channelName, user: display, userId: user?.id }))
       }
     } catch (e) { console.error(e) }
+    
+    let attachmentUrl: string | undefined
+    if (selectedFile) {
+       setIsUploading(true)
+       try {
+         const res = await api.uploadFile(token, selectedFile)
+         if (res.url) attachmentUrl = res.url
+         else alert("Upload failed")
+       } catch {
+         alert("Upload failed")
+       } finally {
+         setIsUploading(false)
+         clearFile()
+       }
+       if (!attachmentUrl && !t) return // Upload failed and no text
+    }
+
     try {
       if (token) {
-        const r = await api.sendMessage(token, channelName, t, guildId)
+        const r = await api.sendMessage(token, channelName, t, guildId, attachmentUrl)
         if ("error" in r) {
           console.error("Error sending message:", r.error)
           return
@@ -223,7 +263,7 @@ export default function ChatPanel({ variant, channelName, guildName, guildId, on
         const ts = r.message.ts
         setMsgs((prev) => {
           if (prev.some((x) => x.id === r.message!.id)) return prev
-          return [...prev, { id: r.message!.id, user: display, userAvatar: myAvatar || undefined, userId: user?.id, text: t, ts, roleColor: (r.message).roleColor }]
+          return [...prev, { id: r.message!.id, user: display, userAvatar: myAvatar || undefined, userId: user?.id, text: t, attachmentUrl: (r.message).attachmentUrl, ts, roleColor: (r.message).roleColor }]
         })
       } else {
         setMsgs((prev) => [...prev, { id: String(Date.now()), user: display, text: t, ts: new Date().toISOString() }])
@@ -310,7 +350,7 @@ export default function ChatPanel({ variant, channelName, guildName, guildId, on
       <div ref={listRef} onScroll={onScroll} className="flex-1 min-h-0 overflow-y-auto p-4">
         <div className="space-y-4">
           {(() => {
-            type Group = { type: 'group'; user: string; userAvatar?: string; userId?: string; messages: { id: string; text: string; ts?: string }[]; roleColor?: string }
+            type Group = { type: 'group'; user: string; userAvatar?: string; userId?: string; messages: { id: string; text: string; attachmentUrl?: string; ts?: string }[]; roleColor?: string }
             type DateSep = { type: 'date'; date: Date; id: string }
             const nodes: (Group | DateSep)[] = []
             
@@ -334,7 +374,7 @@ export default function ChatPanel({ variant, channelName, guildName, guildId, on
                  const currTime = mDate.getTime()
                  
                  if (currTime - lastTime <= 5 * 60 * 1000 && !dateChanged) {
-                    currentGroup.messages.push({ id: m.id, text: m.text, ts: m.ts })
+                    currentGroup.messages.push({ id: m.id, text: m.text, attachmentUrl: m.attachmentUrl, ts: m.ts })
                     continue
                  }
               }
@@ -344,7 +384,7 @@ export default function ChatPanel({ variant, channelName, guildName, guildId, on
                  user: m.user,
                  userAvatar: m.userAvatar,
                  userId: m.userId,
-                 messages: [{ id: m.id, text: m.text, ts: m.ts }],
+                 messages: [{ id: m.id, text: m.text, attachmentUrl: m.attachmentUrl, ts: m.ts }],
                  roleColor: m.roleColor
               }
               nodes.push(currentGroup)
@@ -429,6 +469,21 @@ export default function ChatPanel({ variant, channelName, guildName, guildId, on
                              </div>
                           )}
                           
+                          {it.attachmentUrl && (
+                             <div className="mt-2">
+                                {it.attachmentUrl.match(/\.(jpg|jpeg|png|gif|webp)$/i) ? (
+                                   <img src={getFullUrl(it.attachmentUrl) || ""} alt="Attachment" className="max-w-sm max-h-80 rounded-md object-contain" />
+                                ) : it.attachmentUrl.match(/\.(mp4|webm|mov)$/i) ? (
+                                   <video src={getFullUrl(it.attachmentUrl) || ""} controls className="max-w-sm max-h-80 rounded-md" />
+                                ) : (
+                                   <a href={getFullUrl(it.attachmentUrl) || ""} target="_blank" rel="noreferrer" className="flex items-center gap-2 text-blue-400 hover:underline bg-secondary/20 p-2 rounded w-fit">
+                                      <FileIcon className="h-4 w-4" />
+                                      Download Attachment
+                                   </a>
+                                )}
+                             </div>
+                          )}
+                          
                           {!isEditing && isMyMessage && (
                             <div className="absolute right-4 top-0 hidden group-hover/msg:flex items-center bg-background border rounded shadow-sm z-10">
                                <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => startEditing(it.id, it.text)}>
@@ -453,11 +508,30 @@ export default function ChatPanel({ variant, channelName, guildName, guildId, on
         <div className="px-4 pt-1 text-xs text-muted-foreground animate-pulse font-medium">{Array.from(typing).join(", ")} is typing…</div>
       )}
       <div className="flex h-auto min-h-16 flex-col justify-center border-t border-border px-3 bg-background py-2">
+        {selectedFile && (
+           <div className="flex items-center gap-2 bg-muted/50 p-2 rounded mb-2">
+              <FileIcon className="h-4 w-4" />
+              <span className="text-xs truncate max-w-[200px]">{selectedFile.name}</span>
+              <Button variant="ghost" size="icon" className="h-5 w-5" onClick={clearFile}>
+                 <X className="h-3 w-3" />
+              </Button>
+           </div>
+        )}
         <div className="flex w-full items-center gap-2">
+          <input 
+            type="file" 
+            ref={fileInputRef} 
+            className="hidden" 
+            onChange={handleFileSelect}
+            accept="image/*,video/*"
+          />
+          <Button variant="ghost" size="icon" className="text-muted-foreground hover:text-foreground" onClick={() => fileInputRef.current?.click()}>
+            <Plus className="h-5 w-5" />
+          </Button>
           <Input
             className="border-0 bg-muted/50 focus-visible:ring-1 focus-visible:ring-ring"
             placeholder={!canSend ? "You do not have permission to send messages in this channel." : (variant === "guild" ? `Message #${channelName}` : `Message ${dmUser ? (dmUser.displayName || dmUser.username) : "Direct Message"}`)}
-            disabled={!canSend}
+            disabled={!canSend || isUploading}
             value={text}
             maxLength={5000}
             onChange={(e) => {

@@ -53,13 +53,18 @@ export const api = {
   servers: (token?: string) => get<ServersResponse>("/servers", token ? { headers: { Authorization: `Bearer ${token}` } } : undefined),
   channels: (serverId?: string, token?: string) => get<ChannelsResponse>(`/channels${serverId ? `?serverId=${serverId}` : ""}`, token ? { headers: { Authorization: `Bearer ${token}` } } : undefined),
   users: (serverId?: string) => get<UsersListResponse>(`/users${serverId ? `?serverId=${serverId}` : ""}`),
-  messages: (token: string, channel: string, limit = 50, before?: string, serverId?: string) => get<MessagesResponse>(`/messages?channel=${encodeURIComponent(channel)}&limit=${limit}${before ? `&before=${encodeURIComponent(before)}` : ""}${serverId ? `&serverId=${serverId}` : ""}`, { headers: { Authorization: `Bearer ${token}` } }),
+  messages: (token: string, channel: string, limit = 50, before?: string, guildId?: string) => {
+    let url = `/messages?channel=${encodeURIComponent(channel)}&limit=${limit}`
+    if (before) url += `&before=${encodeURIComponent(before)}`
+    if (guildId) url += `&serverId=${encodeURIComponent(guildId)}`
+    return get<MessagesResponse>(url, { headers: { Authorization: `Bearer ${token}` } })
+  },
   socketInfo: (channel: string) => get<SocketInfoResponse>(`/socket-info?channel=${encodeURIComponent(channel)}`),
-  sendMessage: async (token: string, channel: string, content: string, serverId?: string) => {
+  sendMessage: async (token: string, channel: string, content: string, guildId?: string, attachmentUrl?: string) => {
     return request<MessageResponse>("/messages", {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ channel, content, serverId }),
+      body: JSON.stringify({ channel, content, serverId: guildId, attachmentUrl }),
     })
   },
   register: async (username: string, email: string, password: string, displayName?: string) => {

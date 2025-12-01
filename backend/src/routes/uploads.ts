@@ -1,10 +1,93 @@
 import { FastifyInstance } from "fastify"
 import path from "path"
-import { PutObjectCommand, GetObjectCommand } from "@aws-sdk/client-s3"
+import { PutObjectCommand, GetObjectCommand, ListObjectsV2Command, DeleteObjectsCommand } from "@aws-sdk/client-s3"
 import { s3, BUCKET_NAME, STORAGE_PUBLIC_URL } from "../lib/s3.js"
 import { Readable } from "stream"
+import { pool } from "../lib/db.js"
+
+async function cleanupStorage() {
+  try {
+    console.log("Starting storage cleanup...")
+    // 1. List all objects
+    let objects: { Key: string; LastModified: Date }[] = []
+    let continuationToken: string | undefined
+    
+    do {
+       const res = await s3.send(new ListObjectsV2Command({ 
+         Bucket: BUCKET_NAME, 
+         ContinuationToken: continuationToken 
+       }))
+       if (res.Contents) {
+         objects.push(...res.Contents.map(o => ({ Key: o.Key!, LastModified: o.LastModified! })))
+       }
+       continuationToken = res.NextContinuationToken
+    } while (continuationToken)
+    
+    if (objects.length === 0) return
+
+    // 2. Get all used files from DB
+    // We need to match the Key. The DB stores full URLs.
+    // Assuming the URL format contains the Key at the end.
+    
+    const queries = [
+      `SELECT avatar_url FROM users WHERE avatar_url IS NOT NULL`,
+      `SELECT banner_url FROM users WHERE banner_url IS NOT NULL`,
+      `SELECT icon_url FROM servers WHERE icon_url IS NOT NULL`,
+      `SELECT banner_url FROM servers WHERE banner_url IS NOT NULL`,
+      `SELECT attachment_url FROM messages WHERE attachment_url IS NOT NULL`
+    ]
+    
+    const usedKeys = new Set<string>()
+    
+    for (const q of queries) {
+       const res = await pool.query(q)
+       for (const row of res.rows) {
+          const url = Object.values(row)[0] as string
+          if (url) {
+             // Extract key from URL
+             // URL formats: 
+             // https://storage.domain.com/bucket/KEY
+             // https://domain.com/api/uploads/KEY
+             const parts = url.split('/')
+             const key = parts[parts.length - 1]
+             if (key) usedKeys.add(key)
+          }
+       }
+    }
+    
+    // 3. Identify orphans
+    const orphans = objects.filter(o => !usedKeys.has(o.Key))
+    
+    // 4. Sort by oldest first
+    orphans.sort((a, b) => a.LastModified.getTime() - b.LastModified.getTime())
+    
+    // 5. Delete
+    // Delete in batches of 1000
+    const toDelete = orphans.map(o => ({ Key: o.Key }))
+    
+    if (toDelete.length > 0) {
+       console.log(`Found ${toDelete.length} orphaned files. Deleting...`)
+       for (let i = 0; i < toDelete.length; i += 1000) {
+          const batch = toDelete.slice(i, i + 1000)
+          await s3.send(new DeleteObjectsCommand({
+             Bucket: BUCKET_NAME,
+             Delete: { Objects: batch }
+          }))
+       }
+       console.log("Cleanup complete.")
+    } else {
+       console.log("No orphaned files found.")
+    }
+
+  } catch (e) {
+    console.error("Cleanup error:", e)
+  }
+}
 
 export async function uploadRoutes(app: FastifyInstance) {
+  // Run cleanup once on startup (optional, but good for testing)
+  // cleanupStorage()
+
   app.get("/api/uploads/:key", async (req, reply) => {
      const { key } = req.params as { key: string }
      try {
@@ -51,6 +134,11 @@ export async function uploadRoutes(app: FastifyInstance) {
       return { url }
     } catch (e) {
       console.error("Upload failed:", e)
+      // Try cleanup and retry?
+      // Only if error indicates storage full, but MinIO might return generic 500.
+      // For now, we can trigger cleanup asynchronously on failure to help next time.
+      cleanupStorage().catch(console.error)
+      
       return { error: "Upload failed" }
     }
   })
