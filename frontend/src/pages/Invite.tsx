@@ -21,8 +21,23 @@ export default function Invite() {
     }
     api.inviteInfo(code)
       .then(r => {
-        if (r.invite) setInvite(r.invite)
-        else setError("Invite not found or expired")
+        if (r.error) {
+            setError(r.error)
+        } else if (r.code) {
+            // Map backend response to InviteInfo structure
+            const s = (r as { server: { id: string; name: string } }).server
+            setInvite({
+                code: r.code,
+                serverId: s?.id,
+                serverName: s?.name,
+                expired: false,
+                full: false
+            })
+        } else if (r.invite) {
+            setInvite(r.invite)
+        } else {
+            setError("Invite not found or expired")
+        }
       })
       .catch(() => setError("Failed to load invite"))
       .finally(() => setLoading(false))
