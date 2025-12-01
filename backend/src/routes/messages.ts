@@ -197,13 +197,14 @@ export async function messageRoutes(app: FastifyInstance) {
   app.get("/api/socket-info", async (req: FastifyRequest<{ Querystring: { channel?: string } }>) => {
     const channel = req.query.channel || ""
     const base = process.env.REALTIME_BASE_HTTP || "http://localhost:4001"
+    const wsBase = process.env.REALTIME_BASE_WS || "ws://localhost:4001/ws"
     try {
       const res = await fetch(`${base}/socket-info?channel=${encodeURIComponent(channel)}`)
-      const data = await res.json()
-      return data
+      const data = await res.json() as any
+      return { exists: !!data.exists, wsUrl: wsBase }
     } catch (e) {
       console.error("Socket info error:", e)
-      return { wsUrl: `ws://localhost:4001?channel=${encodeURIComponent(channel)}` }
+      return { exists: false, wsUrl: wsBase }
     }
   })
 
