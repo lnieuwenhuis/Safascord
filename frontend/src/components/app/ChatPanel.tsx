@@ -87,7 +87,7 @@ export default function ChatPanel({ variant, channelName, channelId, guildName, 
       // ChatPanel props: channelId.
       
       api.getServerMembers(token, guildId, channelId).then(r => {
-        setMembers(r.members)
+        setMembers(r.members || [])
       }).catch(() => setMembers([]))
     }
   }, [guildId, variant, token, channelId])
@@ -143,9 +143,9 @@ export default function ChatPanel({ variant, channelName, channelId, guildName, 
     }
   }
 
-  const filteredMembers = members.filter(m => 
-    m.username.toLowerCase().includes(mentionQuery.toLowerCase()) || 
-    m.displayName.toLowerCase().includes(mentionQuery.toLowerCase())
+  const filteredMembers = (members || []).filter(m => 
+    (m.username || "").toLowerCase().includes(mentionQuery.toLowerCase()) || 
+    (m.displayName || "").toLowerCase().includes(mentionQuery.toLowerCase())
   ).slice(0, 5)
 
   const insertMention = (member: { username: string }) => {

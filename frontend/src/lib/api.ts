@@ -70,46 +70,46 @@ export const api = {
        // Let's implement it properly.
        
        return api.getRoles(token, serverId).then(rolesRes => {
-            const roles = rolesRes.roles.sort((a, b) => a.position - b.position)
-            const members = res.members
-            
-            // Create map of roleId -> Role (unused but kept for future)
-            // const roleMap = new Map(roles.map(r => [r.id, r]))
-            
-            // Group members
-            // A member can have multiple roles. We usually group by their highest role.
-            // Roles are sorted by position (asc? desc?). Discord sorts desc (highest position first).
-            // Our backend sorts asc (0 is lowest?). Let's assume higher position = higher importance.
-            
-            // Sort roles desc
-            const sortedRoles = [...roles].sort((a, b) => b.position - a.position)
-            
-            // Helper to find highest role for a member
-            const getHighestRole = (memberRoles: string[]) => {
-                if (!memberRoles || memberRoles.length === 0) return null
-                for (const r of sortedRoles) {
-                    if (memberRoles.includes(r.id)) return r
-                }
-                return null
-            }
-            
-            const grouped = new Map<string, typeof members>()
-            // Unused groups for now, but might be used if we implement hoists
-            // const onlineMembers: typeof members = []
-            // const offlineMembers: typeof members = []
-            
-            // Initialize groups for roles that should be hoisted (hoist=true)
-            // We don't have 'hoist' property in our minimal role interface yet?
-            // Let's assume all named roles are groups for now or just 'Online' / 'Offline' if we want simple.
-            // But Discord groups by role.
-            
-            for (const r of sortedRoles) {
-                grouped.set(r.id, [])
-            }
-            grouped.set("online", [])
-            grouped.set("offline", [])
-
-           for (const m of members) {
+             const roles = (rolesRes && rolesRes.roles) ? rolesRes.roles.sort((a, b) => a.position - b.position) : []
+             const members = (res && res.members) ? res.members : []
+             
+             // Create map of roleId -> Role (unused but kept for future)
+             // const roleMap = new Map(roles.map(r => [r.id, r]))
+             
+             // Group members
+             // A member can have multiple roles. We usually group by their highest role.
+             // Roles are sorted by position (asc? desc?). Discord sorts desc (highest position first).
+             // Our backend sorts asc (0 is lowest?). Let's assume higher position = higher importance.
+             
+             // Sort roles desc
+             const sortedRoles = [...roles].sort((a, b) => b.position - a.position)
+             
+             // Helper to find highest role for a member
+             const getHighestRole = (memberRoles: string[]) => {
+                 if (!memberRoles || memberRoles.length === 0) return null
+                 for (const r of sortedRoles) {
+                     if (memberRoles.includes(r.id)) return r
+                 }
+                 return null
+             }
+             
+             const grouped = new Map<string, typeof members>()
+             // Unused groups for now, but might be used if we implement hoists
+             // const onlineMembers: typeof members = []
+             // const offlineMembers: typeof members = []
+             
+             // Initialize groups for roles that should be hoisted (hoist=true)
+             // We don't have 'hoist' property in our minimal role interface yet?
+             // Let's assume all named roles are groups for now or just 'Online' / 'Offline' if we want simple.
+             // But Discord groups by role.
+             
+             for (const r of sortedRoles) {
+                 grouped.set(r.id, [])
+             }
+             grouped.set("online", [])
+             grouped.set("offline", [])
+ 
+             for (const m of members) {
                // We don't have online status in member object from getServerMembers yet (except maybe we do? check backend)
                // Backend returns: id, username, discriminator, displayName, avatarUrl, roles, muted
                // No status. We need status.
