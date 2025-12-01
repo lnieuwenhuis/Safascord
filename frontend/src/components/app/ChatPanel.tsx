@@ -522,17 +522,6 @@ export default function ChatPanel({ variant, channelName, guildName, guildId, on
                     )}
                   </div>
                   <div className="min-w-0 flex-1">
-                    <div className="flex items-baseline gap-2">
-                      <div 
-                        className="text-sm font-medium text-foreground hover:underline cursor-pointer"
-                        onClick={() => g.userId && setSelectedUserId(g.userId)}
-                        style={{ color: g.roleColor || undefined }}
-                      >
-                        {isMe && user.displayName ? user.displayName : g.user}
-                      </div>
-                      {first.ts && <div className="text-xs text-muted-foreground">{fmt(first.ts)}</div>}
-                    </div>
-
                     {/* Messages Loop */}
                     {g.messages.map((it, idx) => {
                       const isEditing = editingId === it.id
@@ -541,6 +530,19 @@ export default function ChatPanel({ variant, channelName, guildName, guildId, on
 
                       return (
                         <div key={it.id} className={cn("relative group/msg hover:bg-black/5 -mx-4 px-4 py-0.5", idx > 0 && "mt-0.5", isMentioned && "bg-blue-500/10 border-l-2 border-blue-500 hover:bg-blue-500/15 ml-[-3.75rem] pl-[3.75rem]")}>
+                          {idx === 0 && (
+                             <div className="flex items-baseline gap-2 mb-1">
+                               <div 
+                                 className="text-sm font-medium text-foreground hover:underline cursor-pointer"
+                                 onClick={() => g.userId && setSelectedUserId(g.userId)}
+                                 style={{ color: g.roleColor || undefined }}
+                               >
+                                 {isMe && user.displayName ? user.displayName : g.user}
+                               </div>
+                               {first.ts && <div className="text-xs text-muted-foreground">{fmt(first.ts)}</div>}
+                             </div>
+                          )}
+                          
                           {isEditing ? (
                              <div className="flex gap-2 items-center py-1">
                                <Input 
@@ -562,8 +564,7 @@ export default function ChatPanel({ variant, channelName, guildName, guildId, on
                              <div className="text-sm text-foreground whitespace-pre-wrap wrap-break-words leading-snug pr-12">
                                 {it.text.split(/(@[a-zA-Z0-9_]+)/g).map((part, i) => {
                                     if (part.startsWith('@')) {
-                                        const isMe = user && part === `@${user.username}`
-                                        return <span key={i} className={cn("bg-primary/10 text-primary rounded px-0.5 font-medium", isMe && "bg-yellow-500/20 text-yellow-200")}>{part}</span>
+                                        return <span key={i} className={cn("bg-blue-500/30 text-blue-200 rounded px-0.5 font-medium")}>{part}</span>
                                     }
                                     return part
                                 })}
