@@ -1,8 +1,36 @@
 import { FastifyInstance } from "fastify"
 import { pool } from "../lib/db.js"
+import { ListObjectsV2Command, ListBucketsCommand, GetBucketPolicyCommand } from "@aws-sdk/client-s3"
+import { s3, BUCKET_NAME } from "../lib/s3.js"
 
 export async function miscRoutes(app: FastifyInstance) {
   app.get("/api/health", async () => ({ ok: true }))
+
+  app.get("/api/debug/s3", async () => {
+    try {
+      const buckets = await s3.send(new ListBucketsCommand({}))
+      let objects: any[] = []
+      let policy = null
+      try {
+        const res = await s3.send(new ListObjectsV2Command({ Bucket: BUCKET_NAME }))
+        objects = res.Contents || []
+      } catch (e) { console.error("S3 ListObjects error:", e) }
+      
+      try {
+         const p = await s3.send(new GetBucketPolicyCommand({ Bucket: BUCKET_NAME }))
+         policy = p.Policy ? JSON.parse(p.Policy) : null
+      } catch (e) { console.error("S3 Policy error:", e) }
+
+      return { 
+        bucketName: BUCKET_NAME,
+        buckets: buckets.Buckets, 
+        objects,
+        policy
+      }
+    } catch (e) {
+      return { error: String(e) }
+    }
+  })
 
   app.get("/api/debug/db", async () => {
     try {
