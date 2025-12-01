@@ -540,7 +540,7 @@ export default function ChatPanel({ variant, channelName, guildName, guildId, on
                       const isMentioned = user && it.text.includes(`@${user.username}`)
 
                       return (
-                        <div key={it.id} className={cn("relative group/msg hover:bg-black/5 -mx-4 px-4 py-0.5", idx > 0 && "mt-0.5", isMentioned && "bg-blue-500/10 border-l-2 border-blue-500 hover:bg-blue-500/15")}>
+                        <div key={it.id} className={cn("relative group/msg hover:bg-black/5 -mx-4 px-4 py-0.5", idx > 0 && "mt-0.5", isMentioned && "bg-blue-500/10 border-l-2 border-blue-500 hover:bg-blue-500/15 ml-[-3.75rem] pl-[3.75rem]")}>
                           {isEditing ? (
                              <div className="flex gap-2 items-center py-1">
                                <Input 
@@ -559,7 +559,7 @@ export default function ChatPanel({ variant, channelName, guildName, guildId, on
                                <div className="text-xs text-muted-foreground">escape to cancel • enter to save</div>
                              </div>
                           ) : (
-                             <div className={cn("text-sm text-foreground whitespace-pre-wrap wrap-break-words leading-snug pr-12", isMentioned && "bg-blue-500/10 p-0.5 rounded inline-block w-full")}>
+                             <div className="text-sm text-foreground whitespace-pre-wrap wrap-break-words leading-snug pr-12">
                                 {it.text.split(/(@[a-zA-Z0-9_]+)/g).map((part, i) => {
                                     if (part.startsWith('@')) {
                                         const isMe = user && part === `@${user.username}`
