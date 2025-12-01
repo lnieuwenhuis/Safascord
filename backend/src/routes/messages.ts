@@ -225,7 +225,60 @@ export async function messageRoutes(app: FastifyInstance) {
                  if (u.rowCount && u.rowCount > 0) {
                      const mentionedUserId = u.rows[0].id
                      if (mentionedUserId !== payload.sub) {
-                         await createNotification(mentionedUserId, 'mention', m.id, 'message', `You were mentioned by ${sender} in #${channel}`, channelId)
+                         // Check if user has access to this channel
+                         let hasAccess = true
+                         // We can reuse the logic from servers.ts or similar, or do a quick check here.
+                         // Since notifications are critical, we should ensure we don't leak channel existence or notify people who can't see it.
+                         
+                         // Check if channel is private
+                         const ch = await pool.query(`SELECT is_private, server_id FROM channels WHERE id=$1::uuid`, [channelId])
+                         if (ch.rows[0]?.is_private) {
+                             hasAccess = false
+                             // Check permissions
+                             const perms = await pool.query(`SELECT role_id, user_id, allow, deny FROM channel_permissions WHERE channel_id=$1::uuid`, [channelId])
+                             const server = await pool.query(`SELECT owner_id FROM servers WHERE id=$1::uuid`, [targetServerId])
+                             const ownerId = server.rows[0]?.owner_id
+                             
+                             if (mentionedUserId === ownerId) {
+                                 hasAccess = true
+                             } else {
+                                 // Get user roles
+                                 const roles = await pool.query(`SELECT role_id FROM server_member_roles WHERE user_id=$1::uuid AND server_id=$2::uuid`, [mentionedUserId, targetServerId])
+                                 const userRoleIds = roles.rows.map(r => r.role_id)
+                                 
+                                 // Check admin
+                                 const adminRoles = await pool.query(`SELECT id FROM roles WHERE server_id=$1::uuid AND (permissions & 8) = 8`, [targetServerId])
+                                 const adminRoleIds = new Set(adminRoles.rows.map(r => r.id))
+                                 
+                                 if (userRoleIds.some((r: string) => adminRoleIds.has(r))) {
+                                     hasAccess = true
+                                 } else {
+                                     // Check overrides
+                                     const userPerm = perms.rows.find(p => p.user_id === mentionedUserId)
+                                     let allow = false
+                                     let deny = false
+                                     
+                                     if (userPerm) {
+                                         if ((userPerm.allow & 1024) === 1024) allow = true
+                                         if ((userPerm.deny & 1024) === 1024) deny = true
+                                     }
+                                     
+                                     for (const rid of userRoleIds) {
+                                         const rp = perms.rows.find(p => p.role_id === rid)
+                                         if (rp) {
+                                             if ((rp.allow & 1024) === 1024) allow = true
+                                             if ((rp.deny & 1024) === 1024) deny = true
+                                         }
+                                     }
+                                     
+                                     if (allow && !deny) hasAccess = true
+                                 }
+                             }
+                         }
+                         
+                         if (hasAccess) {
+                            await createNotification(mentionedUserId, 'mention', m.id, 'message', `You were mentioned by ${sender} in #${channel}`, channelId)
+                         }
                      }
                  }
               }

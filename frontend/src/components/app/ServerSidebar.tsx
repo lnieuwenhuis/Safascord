@@ -123,7 +123,7 @@ export default function ServerSidebar() {
         onUpdated={(s) => setServers((prev) => prev.map((x) => x.id === s.id ? s : x))}
         initialData={activeServer}
       />
-      <div className="mt-auto pb-2">
+      <div className="mt-auto pb-2 relative z-50">
         <Inbox />
       </div>
     </aside>

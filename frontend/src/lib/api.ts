@@ -3,7 +3,6 @@ import type {
   UserResponse, 
   ServersResponse, 
   ChannelsResponse, 
-  UsersListResponse, 
   MessagesResponse, 
   SocketInfoResponse, 
   MessageResponse, 
@@ -21,7 +20,9 @@ import type {
   DMResponse,
   StatsSummaryResponse,
   StatsActivityResponse,
-  StatsSystemResponse
+  StatsSystemResponse,
+  UserGroup,
+  Notification
 } from "@/types"
 
 export const API_BASE = import.meta.env.VITE_API_BASE || (import.meta.env.DEV ? "http://localhost/api" : "/api")
@@ -52,7 +53,121 @@ async function get<T>(path: string, opts?: RequestInit): Promise<T> {
 export const api = {
   servers: (token?: string) => get<ServersResponse>("/servers", token ? { headers: { Authorization: `Bearer ${token}` } } : undefined),
   channels: (serverId?: string, token?: string) => get<ChannelsResponse>(`/channels${serverId ? `?serverId=${serverId}` : ""}`, token ? { headers: { Authorization: `Bearer ${token}` } } : undefined),
-  users: (serverId?: string) => get<UsersListResponse>(`/users${serverId ? `?serverId=${serverId}` : ""}`),
+  users: (serverId?: string, channelId?: string) => {
+    const token = localStorage.getItem("token") || ""
+    if (serverId) return api.getServerMembers(token, serverId, channelId).then(res => {
+       // Group by roles
+       // This logic should ideally be in the backend or a helper, but let's do it here to match existing interface
+       // We need role names. The members endpoint returns roles as IDs.
+       // We need to fetch roles to map IDs to names.
+       // But UserList component expects groups.
+       // Let's fetch roles too?
+       // Or update getServerMembers to return groups?
+       // Actually, `api.users` was a mock or older function?
+       // Let's see where it was defined before.
+       
+       // It seems `api.users` is a custom helper we added.
+       // Let's implement it properly.
+       
+       return api.getRoles(token, serverId).then(rolesRes => {
+            const roles = rolesRes.roles.sort((a, b) => a.position - b.position)
+            const members = res.members
+            
+            // Create map of roleId -> Role (unused but kept for future)
+            // const roleMap = new Map(roles.map(r => [r.id, r]))
+            
+            // Group members
+            // A member can have multiple roles. We usually group by their highest role.
+            // Roles are sorted by position (asc? desc?). Discord sorts desc (highest position first).
+            // Our backend sorts asc (0 is lowest?). Let's assume higher position = higher importance.
+            
+            // Sort roles desc
+            const sortedRoles = [...roles].sort((a, b) => b.position - a.position)
+            
+            // Helper to find highest role for a member
+            const getHighestRole = (memberRoles: string[]) => {
+                if (!memberRoles || memberRoles.length === 0) return null
+                for (const r of sortedRoles) {
+                    if (memberRoles.includes(r.id)) return r
+                }
+                return null
+            }
+            
+            const grouped = new Map<string, typeof members>()
+            // Unused groups for now, but might be used if we implement hoists
+            // const onlineMembers: typeof members = []
+            // const offlineMembers: typeof members = []
+            
+            // Initialize groups for roles that should be hoisted (hoist=true)
+            // We don't have 'hoist' property in our minimal role interface yet?
+            // Let's assume all named roles are groups for now or just 'Online' / 'Offline' if we want simple.
+            // But Discord groups by role.
+            
+            for (const r of sortedRoles) {
+                grouped.set(r.id, [])
+            }
+            grouped.set("online", [])
+            grouped.set("offline", [])
+
+           for (const m of members) {
+               // We don't have online status in member object from getServerMembers yet (except maybe we do? check backend)
+               // Backend returns: id, username, discriminator, displayName, avatarUrl, roles, muted
+               // No status. We need status.
+               // Update backend to return status?
+               // Or assume online for now?
+               // Let's put everyone in roles.
+               
+               const highest = getHighestRole(m.roles)
+               if (highest) {
+                   grouped.get(highest.id)?.push(m)
+               } else {
+                   grouped.get("online")?.push(m) // No role = online group (simplified)
+               }
+           }
+           
+           const result: UserGroup[] = []
+           for (const r of sortedRoles) {
+               const ms = grouped.get(r.id)
+               if (ms && ms.length > 0) {
+                   result.push({
+                       id: r.id,
+                       name: r.name,
+                       color: r.color,
+                       users: ms.map(x => ({ 
+                           id: x.id, 
+                           username: x.username, 
+                           displayName: x.displayName, 
+                           discriminator: x.discriminator,
+                           avatarUrl: x.avatarUrl, 
+                           status: "online", // placeholder
+                           color: r.color 
+                       }))
+                   })
+               }
+           }
+           
+           const noRole = grouped.get("online")
+           if (noRole && noRole.length > 0) {
+               result.push({
+                   id: "online",
+                   name: "Online",
+                   color: "#99aab5",
+                   users: noRole.map(x => ({ 
+                       id: x.id, 
+                       username: x.username, 
+                       displayName: x.displayName, 
+                       discriminator: x.discriminator,
+                       avatarUrl: x.avatarUrl, 
+                       status: "online" 
+                   }))
+               })
+           }
+           
+           return { groups: result }
+       })
+    })
+    return Promise.resolve({ groups: [] })
+  },
   messages: (token: string, channel: string, limit = 50, before?: string, guildId?: string) => {
     let url = `/messages?channel=${encodeURIComponent(channel)}&limit=${limit}`
     if (before) url += `&before=${encodeURIComponent(before)}`
@@ -163,8 +278,9 @@ export const api = {
       headers: { Authorization: `Bearer ${token}` }
     })
   },
-  getServerMembers: async (token: string, serverId: string) => {
-    return request<{ members: { id: string; username: string; discriminator: string; displayName: string; avatarUrl: string; roles: string[]; muted: boolean }[] }>(`/servers/${serverId}/members`, {
+  getServerMembers: async (token: string, serverId: string, channelId?: string) => {
+    const url = channelId ? `/servers/${serverId}/members?channelId=${channelId}` : `/servers/${serverId}/members`
+    return request<{ members: { id: string; username: string; discriminator: string; displayName: string; avatarUrl: string; roles: string[]; muted: boolean }[] }>(url, {
       headers: { Authorization: `Bearer ${token}` }
     })
   },
@@ -308,7 +424,7 @@ export const api = {
   },
 
   // Notifications
-  getNotifications: (token: string) => get<{ notifications: any[] }>("/notifications", { headers: { Authorization: `Bearer ${token}` } }),
+  getNotifications: (token: string) => get<{ notifications: Notification[] }>("/notifications", { headers: { Authorization: `Bearer ${token}` } }),
   markNotificationRead: async (token: string, id: string) => {
     return request<BasicResponse>(`/notifications/${id}/read`, {
       method: "POST",

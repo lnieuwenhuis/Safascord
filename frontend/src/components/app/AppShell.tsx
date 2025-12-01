@@ -11,12 +11,14 @@ import { cn } from "@/lib/utils"
 export default function AppShell({
   variant = "guild",
   channelName,
+  channelId,
   guildName,
   mode = "chat",
   guildId,
 }: {
   variant?: "guild" | "dm"
   channelName: string
+  channelId?: string
   guildName?: string
   mode?: "chat" | "overview"
   guildId?: string
@@ -81,7 +83,8 @@ export default function AppShell({
         ) : (
           <ChatPanel 
             variant={variant} 
-            channelName={channelName} 
+            channelName={channelName}
+            channelId={channelId} 
             guildName={guildName}
             guildId={guildId}
             onMobileMenu={() => setMobileMenuOpen(true)}
@@ -93,7 +96,7 @@ export default function AppShell({
         {/* Desktop User List */}
         {variant !== "dm" && showUserList && (
           <div className="hidden lg:flex h-full overflow-hidden">
-            <UserList serverId={guildId} className="w-full border-l" />
+            <UserList serverId={guildId} channelId={channelId} className="w-full border-l" />
           </div>
         )}
       </div>

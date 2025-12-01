@@ -50,5 +50,5 @@ export default function GuildChannel() {
   }, [sid, channelId, navigate])
 
   const mode = cid ? "chat" : "overview"
-  return <AppShell variant="guild" channelName={channelName} guildName={serverName} guildId={sid} mode={mode} />
+  return <AppShell variant="guild" channelName={channelName} channelId={cid} guildName={serverName} guildId={sid} mode={mode} />
 }

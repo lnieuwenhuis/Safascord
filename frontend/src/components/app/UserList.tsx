@@ -5,17 +5,17 @@ import { cn } from "@/lib/utils"
 import UserProfilePopover from "./UserProfilePopover"
 import type { User, UserGroup } from "@/types"
 
-export default function UserList({ serverId, className }: { serverId?: string, className?: string }) {
+export default function UserList({ serverId, channelId, className }: { serverId?: string, channelId?: string, className?: string }) {
   const [groups, setGroups] = useState<UserGroup[]>([])
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null)
   const [selectedUserRect, setSelectedUserRect] = useState<DOMRect | null>(null)
   const { user: currentUser } = useAuth()
 
   useEffect(() => {
-    api.users(serverId).then((r) => {
+    api.users(serverId, channelId).then((r) => {
       setGroups(r.groups)
     }).catch(() => setGroups([]))
-  }, [serverId])
+  }, [serverId, channelId])
 
   const statusColor = (status: string) => {
     switch (status) {
@@ -33,7 +33,7 @@ export default function UserList({ serverId, className }: { serverId?: string, c
         <div className="flex-1 space-y-6 overflow-y-auto min-h-0">
           {groups.map((g, idx) => (
             <div key={idx}>
-              <div className="text-xs font-bold uppercase text-muted-foreground mb-2">{g.title} — {g.users.length}</div>
+              <div className="text-xs font-bold uppercase text-muted-foreground mb-2">{g.name} — {g.users.length}</div>
               <ul className="space-y-0.5">
                 {g.users.map((u) => {
                   // Check if this is the current user to show live updates

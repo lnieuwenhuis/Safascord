@@ -7,19 +7,22 @@ import { useAuth } from "@/hooks/useAuth"
 import { cn } from "@/lib/utils"
 import { useNotifications } from "../NotificationProvider"
 import UserProfileDialog from "./UserProfileDialog"
-import type { Message } from "@/types"
+import type { Message, UserSummary } from "@/types"
 
 interface ChatPanelProps {
   variant: "guild" | "dm"
   channelName: string
+  channelId?: string
   guildName?: string
   guildId?: string
   onMobileMenu?: () => void
   onUserListToggle?: () => void
   showUserList?: boolean
+  canSend?: boolean
+  dmUser?: UserSummary
 }
 
-export default function ChatPanel({ variant, channelName, guildName, guildId, onMobileMenu, onUserListToggle, showUserList }: ChatPanelProps) {
+export default function ChatPanel({ variant, channelName, channelId, guildName, guildId, onMobileMenu, onUserListToggle, showUserList, canSend = true, dmUser }: ChatPanelProps) {
   const { markChannelRead } = useNotifications()
   const [msgs, setMsgs] = useState<Message[]>([])
   const [text, setText] = useState("")
@@ -30,7 +33,7 @@ export default function ChatPanel({ variant, channelName, guildName, guildId, on
   const [hasMore, setHasMore] = useState(true)
   const [loadingMore, setLoadingMore] = useState(false)
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null)
-  const [dmUser, setDmUser] = useState<{ username: string; displayName: string } | null>(null)
+  const [localDmUser, setLocalDmUser] = useState<{ username: string; displayName: string } | null>(null)
   
   // File upload state
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -51,16 +54,18 @@ export default function ChatPanel({ variant, channelName, guildName, guildId, on
   }, [channelName, markChannelRead])
   
   useEffect(() => {
+    setMsgs([])
+    setTyping(new Set())
     if (variant === "dm" && channelName && token) {
       // Try to find the DM user name
       api.getDMs(token).then(res => {
         const dm = res.dms.find(d => d.id === channelName)
         if (dm) {
-           setDmUser(dm.user)
+           setLocalDmUser(dm.user)
         }
       }).catch(() => {})
     } else {
-      setDmUser(null)
+      setLocalDmUser(null)
     }
   }, [variant, channelName, token])
 
@@ -71,11 +76,21 @@ export default function ChatPanel({ variant, channelName, guildName, guildId, on
 
   useEffect(() => {
     if (variant === "guild" && guildId && token) {
-      api.getServerMembers(token, guildId).then(r => {
+      // For server channels, we want to list members who have access to THIS channel
+      // But wait, the sidebar user list is usually per-server.
+      // However, the user requested that people who don't have access shouldn't show up.
+      // The API we updated accepts channelId.
+      // We should pass the current channelId if available.
+      // In 'guild' variant, channelId is passed as prop (renamed to channelName in props but it's actually ID or Name? Let's check parent)
+      // In App.tsx: <GuildChannel /> passes params.
+      // GuildChannel passes channelId={channelId} to ChatPanel.
+      // ChatPanel props: channelId.
+      
+      api.getServerMembers(token, guildId, channelId).then(r => {
         setMembers(r.members)
       }).catch(() => setMembers([]))
     }
-  }, [guildId, variant, token])
+  }, [guildId, variant, token, channelId])
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (showMentionMenu) {
@@ -166,7 +181,8 @@ export default function ChatPanel({ variant, channelName, guildName, guildId, on
     return date.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
   }
 
-  const [canSend, setCanSend] = useState(true)
+  const [canSendState, setCanSendState] = useState(true)
+  const effectiveCanSend = canSend && canSendState
 
   useEffect(() => {
     if (!channelName) return
@@ -195,20 +211,20 @@ export default function ChatPanel({ variant, channelName, guildName, guildId, on
                   // But in our API, if the user has ANY role that allows sending, the backend should reflect that.
                   // The backend API logic for `channels` endpoint might need to be robust.
                   // For now, we trust the `canSendMessages` property from the API.
-                  setCanSend(c.canSendMessages ?? true)
+                  setCanSendState(c.canSendMessages ?? true)
                   found = true
                   break
                }
             }
             // If channel not found in the list (maybe it's hidden), we can't send.
-            if (!found) setCanSend(false) 
+            if (!found) setCanSendState(false) 
          }).catch(e => {
             console.error(e)
             // If API fails, default to true or false? False is safer.
-            setCanSend(false)
+            setCanSendState(false)
          })
     } else {
-       setCanSend(true)
+       setCanSendState(true)
     }
   }, [channelName, user?.id, variant, guildName, guildId, token])
 
@@ -527,9 +543,12 @@ export default function ChatPanel({ variant, channelName, guildName, guildId, on
                       const isEditing = editingId === it.id
                       const isMyMessage = isMe || (user && g.userId === user.id)
                       const isMentioned = user && it.text.includes(`@${user.username}`)
+                      const prevMsg = idx > 0 ? g.messages[idx - 1] : null
+                      const prevIsMentioned = prevMsg && user && prevMsg.text.includes(`@${user.username}`)
+                      const isConsecutiveMention = isMentioned && prevIsMentioned
 
                       return (
-                        <div key={it.id} className={cn("relative group/msg hover:bg-black/5 -mx-4 px-4 py-0.5", idx > 0 && "mt-0.5", isMentioned && "bg-blue-500/10 border-l-2 border-blue-500 hover:bg-blue-500/15 ml-[-3.75rem] pl-[3.75rem]")}>
+                        <div key={it.id} className={cn("relative group/msg hover:bg-black/5 -mx-4 px-4 py-0.5", idx > 0 && !isConsecutiveMention && "mt-0.5", isMentioned && "bg-blue-500/10 border-l-2 border-blue-500 hover:bg-blue-500/15 ml-[-3.75rem] pl-[3.75rem]")}>
                           {idx === 0 && (
                              <div className="flex items-baseline gap-2 mb-1">
                                <div 
@@ -671,8 +690,8 @@ export default function ChatPanel({ variant, channelName, guildName, guildId, on
             )}
             <Input
               className="border-0 bg-muted/50 focus-visible:ring-1 focus-visible:ring-ring"
-              placeholder={!canSend ? "You do not have permission to send messages in this channel." : (variant === "guild" ? `Message #${channelName}` : `Message ${dmUser ? (dmUser.displayName || dmUser.username) : "Direct Message"}`)}
-              disabled={!canSend || isUploading}
+              placeholder={!effectiveCanSend ? "You do not have permission to send messages in this channel." : (variant === "guild" ? `Message #${channelName}` : `Message ${localDmUser ? (localDmUser.displayName || localDmUser.username) : "Direct Message"}`)}
+              disabled={!effectiveCanSend || isUploading}
               value={text}
               maxLength={5000}
               onPaste={(e) => {
@@ -697,7 +716,7 @@ export default function ChatPanel({ variant, channelName, guildName, guildId, on
             onKeyDown={handleKeyDown}
           />
           </div>
-          <Button variant="brand" onClick={send} disabled={!canSend}>Send</Button>
+          <Button variant="brand" onClick={send} disabled={!effectiveCanSend}>Send</Button>
         </div>
         {text.length > 4000 && (
           <div className={cn("text-xs text-right px-1 mt-1", text.length >= 5000 ? "text-destructive" : "text-muted-foreground")}>

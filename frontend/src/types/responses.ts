@@ -27,7 +27,9 @@ export interface UserSummary {
 }
 
 export interface UserGroup {
-  title: string
+  id: string
+  name: string
+  color: string
   users: UserSummary[]
 }
 

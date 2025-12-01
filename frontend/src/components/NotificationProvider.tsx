@@ -1,10 +1,10 @@
 import React, { createContext, useContext, useEffect, useState, useCallback, useRef } from "react"
 import { useAuth } from "../hooks/useAuth"
 import { api } from "../lib/api"
-import type { Notification } from "../types"
+import type { Notification as AppNotification } from "../types"
 
 interface NotificationContextType {
-  notifications: Notification[]
+  notifications: AppNotification[]
   unreadCount: number
   markRead: (id: string) => void
   markChannelRead: (channelId: string) => void
@@ -16,7 +16,7 @@ const NotificationContext = createContext<NotificationContextType | undefined>(u
 
 export function NotificationProvider({ children }: { children: React.ReactNode }) {
   const { user, isAuthenticated } = useAuth()
-  const [notifications, setNotifications] = useState<Notification[]>([])
+  const [notifications, setNotifications] = useState<AppNotification[]>([])
   const wsRef = useRef<WebSocket | null>(null)
   const [retryCount, setRetryCount] = useState(0)
 
@@ -30,6 +30,7 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
         }
       }).catch(console.error)
     } else {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setNotifications([])
     }
   }, [isAuthenticated, user])
@@ -64,18 +65,20 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
        ws.onmessage = (ev) => {
          try {
            const data = JSON.parse(String(ev.data))
-           if (data.type === "notification" && data.notification) {
-             const n = data.notification as Notification
-             setNotifications(prev => [n, ...prev])
-             
-             // Play sound or visual cue if not quiet mode
+          if (data.type === "notification" && data.notification) {
+            const n = data.notification as AppNotification
+            setNotifications(prev => [n, ...prev])
+            
+            // Play sound or visual cue if not quiet mode
              // The notification object has a `quiet` property from backend based on user settings
              if (!n.quiet) {
                 // We can trigger a sound here if desired
                 // new Audio('/notification.mp3').play().catch(() => {})
              }
            }
-         } catch {}
+         } catch (e) {
+           console.error("Error processing notification:", e)
+         }
        }
        
        ws.onclose = () => {
@@ -85,7 +88,7 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
     })
 
     return () => {
-      if (ws) ws.close()
+      if (wsRef.current) wsRef.current.close()
     }
   }, [isAuthenticated, user, retryCount])
 
@@ -123,6 +126,7 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
   )
 }
 
+//eslint-disable-next-line react-refresh/only-export-components
 export function useNotifications() {
   const context = useContext(NotificationContext)
   if (!context) throw new Error("useNotifications must be used within NotificationProvider")
