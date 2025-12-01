@@ -292,14 +292,6 @@ export async function channelRoutes(app: FastifyInstance) {
           const s = await pool.query(`SELECT owner_id FROM servers WHERE id=$1::uuid`, [serverId])
           const isOwner = s.rows[0]?.owner_id === userId
           
-          // Ensure user roles are synced (Self-healing for legacy data)
-          await pool.query(`
-            INSERT INTO server_member_roles (server_id, user_id, role_id)
-            SELECT server_id, user_id, role_id FROM server_members 
-            WHERE user_id = $1::uuid AND server_id = $2::uuid AND role_id IS NOT NULL
-            ON CONFLICT DO NOTHING
-          `, [userId, serverId])
-
           const allChannelIdsWithPerms = await pool.query(
                `SELECT DISTINCT channel_id FROM channel_permissions 
                 JOIN channels ON channels.id = channel_permissions.channel_id

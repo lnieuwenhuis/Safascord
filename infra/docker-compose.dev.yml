@@ -81,6 +81,7 @@ services:
       - uploads_data:/app/uploads
       - ../backend:/app
       - /app/node_modules
+    command: bun --watch src/server.ts
     expose:
       - "4000"
     labels:

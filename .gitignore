@@ -45,3 +45,5 @@ package-lock.json
 yarn.lock
 pnpm-lock.yaml
 frontend/package-lock.json
+backend/bun.lock
+*.lock

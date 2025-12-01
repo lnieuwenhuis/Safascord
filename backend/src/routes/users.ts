@@ -197,7 +197,7 @@ export async function userRoutes(app: FastifyInstance) {
              FROM server_members sm
              WHERE ($1::uuid IS NULL OR sm.server_id = $1::uuid)
            )
-           SELECT COALESCE(upr.display_group, 'Member') AS title, 
+           SELECT COALESCE(upr.display_group, 'Users') AS title, 
                   json_agg(json_build_object(
                     'id', users.id,
                     'username', users.username, 
