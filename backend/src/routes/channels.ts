@@ -292,6 +292,14 @@ export async function channelRoutes(app: FastifyInstance) {
           const s = await pool.query(`SELECT owner_id FROM servers WHERE id=$1::uuid`, [serverId])
           const isOwner = s.rows[0]?.owner_id === userId
           
+          // Ensure user roles are synced (Self-healing for legacy data)
+          await pool.query(`
+            INSERT INTO server_member_roles (server_id, user_id, role_id)
+            SELECT server_id, user_id, role_id FROM server_members 
+            WHERE user_id = $1::uuid AND server_id = $2::uuid AND role_id IS NOT NULL
+            ON CONFLICT DO NOTHING
+          `, [userId, serverId])
+
           const allChannelIdsWithPerms = await pool.query(
                `SELECT DISTINCT channel_id FROM channel_permissions 
                 JOIN channels ON channels.id = channel_permissions.channel_id
@@ -300,22 +308,31 @@ export async function channelRoutes(app: FastifyInstance) {
           )
           const restrictedChannels = new Set(allChannelIdsWithPerms.rows.map(r => r.channel_id))
           
+          // Get channels where user has explicit ALLOW permission
           const userPerms = await pool.query(
-               `SELECT cp.channel_id, cp.can_send_messages
+               `SELECT cp.channel_id
                 FROM channel_permissions cp
                 JOIN server_member_roles smr ON smr.role_id = cp.role_id
-                WHERE smr.user_id = $1::uuid AND smr.server_id = $2::uuid`,
+                WHERE smr.user_id = $1::uuid AND smr.server_id = $2::uuid
+                  AND cp.can_send_messages = TRUE`,
                [userId, serverId]
           )
-          const allowedByPerms = new Set<string>()
-          for (const p of userPerms.rows) {
-               if (p.can_send_messages) allowedByPerms.add(p.channel_id)
-          }
+          const allowedByPerms = new Set<string>(userPerms.rows.map(r => r.channel_id))
+
+          // Check admin/manager permissions
+          const admin = await pool.query(
+               `SELECT 1 FROM server_member_roles smr
+                JOIN roles r ON r.id = smr.role_id
+                WHERE smr.user_id = $1::uuid AND smr.server_id = $2::uuid
+                  AND (r.can_manage_server = TRUE OR r.can_manage_channels = TRUE)`,
+               [userId, serverId]
+          )
+          const isAdmin = admin.rowCount && admin.rowCount > 0
 
           for (const row of ch.rows) {
               if (row.type === 'dm') {
                  row.canSendMessages = true
-              } else if (isOwner) {
+              } else if (isOwner || isAdmin) {
                  row.canSendMessages = true
               } else {
                  // If restricted, must be in allowedByPerms
