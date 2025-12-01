@@ -86,6 +86,8 @@ export interface InviteInfo {
     code: string
     serverId: string
     serverName: string
+    serverIcon?: string
+    serverBanner?: string
     expired: boolean
     full: boolean
 }

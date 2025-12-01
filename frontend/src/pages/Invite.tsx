@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react"
 import { useNavigate, useParams } from "react-router-dom"
-import { api } from "@/lib/api"
+import { api, getFullUrl } from "@/lib/api"
 import { Button } from "@/components/ui/button"
 import type { InviteInfo } from "@/types"
 
@@ -25,11 +25,13 @@ export default function Invite() {
             setError(r.error)
         } else if (r.code) {
             // Map backend response to InviteInfo structure
-            const s = (r as { server: { id: string; name: string } }).server
+            const s = (r as { server: { id: string; name: string; iconUrl?: string; bannerUrl?: string } }).server
             setInvite({
                 code: r.code,
                 serverId: s?.id,
                 serverName: s?.name,
+                serverIcon: s?.iconUrl,
+                serverBanner: s?.bannerUrl,
                 expired: false,
                 full: false
             })
@@ -51,7 +53,7 @@ export default function Invite() {
     if (!invite) return
     try {
       const res = await api.acceptInvite(token, invite.code)
-      if (res.ok) {
+      if (res.success || res.ok) {
         navigate(`/server/${invite.serverId}`)
       } else {
         setError(res.error || "Failed to join")
@@ -80,9 +82,23 @@ export default function Invite() {
   }
 
   return (
-    <div className="flex h-screen w-full items-center justify-center bg-[#313338] text-white">
-      <div className="w-full max-w-md rounded-lg bg-[#2b2d31] p-8 shadow-xl text-center">
-        <div className="mb-4 text-sm font-bold uppercase text-[#949ba4]">You've been invited to join</div>
+    <div className="flex h-screen w-full items-center justify-center bg-[#313338] text-white relative overflow-hidden">
+      {invite?.serverBanner && (
+         <div className="absolute inset-0 z-0">
+            <img src={getFullUrl(invite.serverBanner) || ""} alt="" className="w-full h-full object-cover opacity-20 blur-sm" />
+         </div>
+      )}
+      <div className="w-full max-w-md rounded-lg bg-[#2b2d31] p-8 shadow-xl text-center z-10 relative">
+        {invite?.serverIcon ? (
+           <div className="mx-auto mb-4 h-24 w-24 rounded-3xl overflow-hidden">
+              <img src={getFullUrl(invite.serverIcon) || ""} alt={invite.serverName} className="h-full w-full object-cover" />
+           </div>
+        ) : (
+           <div className="mx-auto mb-4 h-24 w-24 rounded-3xl bg-[#5865f2] flex items-center justify-center text-3xl font-bold">
+              {invite?.serverName.substring(0, 2).toUpperCase()}
+           </div>
+        )}
+        <div className="mb-2 text-sm font-bold uppercase text-[#949ba4]">You've been invited to join</div>
         <div className="mb-6 text-2xl font-bold">{invite?.serverName}</div>
         <div className="flex justify-center gap-4">
             <Button onClick={() => navigate("/")} variant="secondary" className="bg-[#313338] hover:bg-[#3f4147] text-white">No, thanks</Button>

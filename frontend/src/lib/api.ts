@@ -245,7 +245,7 @@ export const api = {
     return request<InviteResponse>(`/invites/${code}`)
   },
   acceptInvite: async (token: string, code: string) => {
-    return request<BasicResponse>(`/invites/${code}/accept`, {
+    return request<{ success?: boolean; ok?: boolean; serverId?: string; error?: string }>(`/invites/${code}/accept`, {
       method: "POST",
       headers: { Authorization: `Bearer ${token}` },
     })
