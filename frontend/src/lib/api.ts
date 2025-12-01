@@ -163,7 +163,10 @@ export const api = {
                })
            }
            
-           return { groups: result }
+           // Filter out empty groups and ensure only users with access are shown
+           // We already filtered users in the backend, so all users here have access.
+           // Just filter out empty role groups.
+           return { groups: result.filter(g => g.users.length > 0) }
        })
     })
     return Promise.resolve({ groups: [] })
