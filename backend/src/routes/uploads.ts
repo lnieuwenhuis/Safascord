@@ -10,6 +10,38 @@ type ObjectType = {
   LastModified: Date;
 }
 
+function readEnv(...keys: string[]) {
+  for (const key of keys) {
+    const raw = process.env[key]
+    if (!raw) continue
+    const trimmed = raw.trim()
+    if (!trimmed) continue
+    const unquoted = trimmed.replace(/^"(.*)"$/, "$1").replace(/^'(.*)'$/, "$1")
+    if (unquoted) return unquoted
+  }
+  return ""
+}
+
+function extensionFromMimeType(mimeType?: string) {
+  if (!mimeType) return ""
+  const map: Record<string, string> = {
+    "image/jpeg": ".jpg",
+    "image/png": ".png",
+    "image/gif": ".gif",
+    "image/webp": ".webp",
+    "image/avif": ".avif",
+    "image/svg+xml": ".svg",
+    "video/mp4": ".mp4",
+    "video/webm": ".webm",
+    "video/quicktime": ".mov",
+    "audio/mpeg": ".mp3",
+    "audio/ogg": ".ogg",
+    "application/pdf": ".pdf",
+    "text/plain": ".txt",
+  }
+  return map[mimeType] || ""
+}
+
 async function cleanupStorage() {
   try {
     console.log("Starting storage cleanup...")
@@ -119,13 +151,13 @@ export async function uploadRoutes(app: FastifyInstance) {
 
   app.post("/api/upload", async (req, reply) => {
     const data = await req.file()
-    if (!data) return { error: "No file" }
-    const ext = path.extname(data.filename)
+    if (!data) return reply.status(400).send({ error: "No file" })
+    const ext = path.extname(data.filename || "") || extensionFromMimeType(data.mimetype)
     const name = `${Date.now()}-${Math.random().toString(36).slice(2)}${ext}`
     
     // Limit 50MB
     const buffer = await data.toBuffer()
-    if (buffer.length > 50 * 1024 * 1024) return { error: "File too large (max 50MB)" }
+    if (buffer.length > 50 * 1024 * 1024) return reply.status(413).send({ error: "File too large (max 50MB)" })
   
     try {
       await s3.send(new PutObjectCommand({
@@ -135,21 +167,41 @@ export async function uploadRoutes(app: FastifyInstance) {
         ContentType: data.mimetype
       }))
       // Use proxy URL if configured, otherwise default
-      const publicBaseOverride = process.env.S3_PUBLIC_BASE_URL || ""
+      const publicBaseOverride = readEnv("S3_PUBLIC_BASE_URL", "S3_PUBLIC_URL").replace(/\/+$/, "")
+      const apiUrl = readEnv("API_URL").replace(/\/+$/, "")
+      const normalizedApiOrigin = apiUrl.replace(/\/api$/i, "")
       const baseUrl = process.env.PROXY_UPLOADS === "true" 
-         ? `${process.env.API_URL || ""}/api/uploads`
+         ? `${normalizedApiOrigin}/api/uploads`
          : (publicBaseOverride || `${STORAGE_PUBLIC_URL.replace(/\/$/, "")}/${BUCKET_NAME}`)
          
       const url = `${baseUrl}/${name}`
       return { url }
     } catch (e) {
-      console.error("Upload failed:", e)
+      const err = e as Error & { Code?: string; code?: string; $metadata?: { httpStatusCode?: number } }
+      const endpoint = readEnv("S3_ENDPOINT", "AWS_ENDPOINT_URL_S3", "ENDPOINT_URL", "RAILWAY_BUCKET_ENDPOINT", "BUCKET_ENDPOINT", "BUCKET_ENDPOINT_URL")
+      const region = readEnv("S3_REGION", "AWS_REGION", "AWS_DEFAULT_REGION", "REGION", "BUCKET_REGION", "RAILWAY_BUCKET_REGION")
+      req.log.error(
+        {
+          err: e,
+          bucket: BUCKET_NAME,
+          endpoint,
+          region,
+        },
+        "Upload failed"
+      )
       // Try cleanup and retry?
       // Only if error indicates storage full, but MinIO might return generic 500.
       // For now, we can trigger cleanup asynchronously on failure to help next time.
       cleanupStorage().catch(console.error)
-      
-      return { error: "Upload failed" }
+
+      const reasonParts = [
+        err.name,
+        err.message,
+        err.Code || err.code,
+        err.$metadata?.httpStatusCode ? `http:${err.$metadata.httpStatusCode}` : undefined,
+      ].filter(Boolean)
+      const reason = reasonParts.length > 0 ? reasonParts.join(" | ") : String(e)
+      return reply.status(500).send({ error: "Upload failed", reason })
     }
   })
 }

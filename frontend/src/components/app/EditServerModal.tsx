@@ -75,12 +75,12 @@ export default function EditServerModal({
 
   return createPortal(
     <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/80 backdrop-blur-sm supports-[backdrop-filter]:bg-black/50 p-4" onClick={onClose}>
-      <div className="flex h-[600px] w-full max-w-3xl flex-col overflow-hidden rounded-lg bg-background shadow-2xl border border-border" onClick={(e) => e.stopPropagation()}>
+      <div className="flex h-[600px] w-full max-w-3xl flex-col overflow-hidden rounded-2xl bg-slate-950 shadow-2xl border border-cyan-300/20" onClick={(e) => e.stopPropagation()}>
         {/* Header */}
-        <div className="flex items-center justify-between border-b border-border p-6">
+        <div className="flex items-center justify-between border-b border-cyan-300/15 p-6">
           <div>
             <h2 className="text-lg font-semibold">{initialData.name} Settings</h2>
-            <p className="text-sm text-muted-foreground">Manage your server settings and roles</p>
+            <p className="text-sm text-slate-300/72">Manage your server settings and roles</p>
           </div>
           <Button variant="ghost" size="icon" onClick={onClose} className="rounded-full">
             <X className="h-4 w-4" />
@@ -88,7 +88,7 @@ export default function EditServerModal({
         </div>
 
         {/* Tabs */}
-        <div className="flex border-b border-border px-6">
+        <div className="flex border-b border-cyan-300/15 px-6">
            <button 
              onClick={() => setActiveTab("overview")}
              className={`border-b-2 px-4 py-3 text-sm font-medium transition-colors ${activeTab === "overview" ? "border-primary text-primary" : "border-transparent text-muted-foreground hover:text-foreground"}`}
@@ -124,7 +124,7 @@ export default function EditServerModal({
         </div>
 
         {/* Footer */}
-        <div className="flex items-center justify-end gap-4 border-t border-border bg-muted/10 p-4">
+        <div className="flex items-center justify-end gap-4 border-t border-cyan-300/15 bg-slate-900/50 p-4">
            <Button variant="ghost" onClick={onClose}>Cancel</Button>
            <Button onClick={handleSave} disabled={!name || loading}>Save Changes</Button>
         </div>

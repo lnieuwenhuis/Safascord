@@ -234,116 +234,132 @@ export async function channelRoutes(app: FastifyInstance) {
     try {
       const serverId = req.query.serverId || null
       let userId: string | null = null
-      
+
       if (auth) {
-         try {
-           const payload = jwt.verify(auth.replace(/^Bearer\s+/i, ""), JWT_SECRET) as any
-           userId = payload.sub
-         } catch {}
+        try {
+          const payload = jwt.verify(auth.replace(/^Bearer\s+/i, ""), JWT_SECRET) as any
+          userId = payload.sub
+        } catch {}
       }
 
-      let query = `SELECT c.id, c.name, c.category, c.type, FALSE as "canSendMessages" FROM channels c WHERE ($1::uuid IS NULL OR c.server_id=$1::uuid) `
-      const params: any[] = [serverId]
-      
-      if (userId) {
-         // Check if owner
-         const s = await pool.query(`SELECT owner_id FROM servers WHERE id=$1::uuid`, [serverId])
-         const isOwner = s.rows[0]?.owner_id === userId
-         
-         if (!isOwner) {
-            // Filter by permissions
-            // Logic:
-            // 1. If channel is DM, allow (handled by other logic usually, but included for safety)
-            // 2. If NO permissions exist for this channel, it's public -> Allow
-            // 3. If permissions EXIST, user must have AT LEAST ONE role that allows viewing -> Allow
-            query += `
-              AND (
-                c.type = 'dm' OR
-                NOT EXISTS (SELECT 1 FROM channel_permissions cp WHERE cp.channel_id = c.id)
-                OR EXISTS (
-                   SELECT 1 
-                   FROM channel_permissions cp
-                   JOIN server_member_roles smr ON smr.role_id = cp.role_id
-                   WHERE cp.channel_id = c.id 
-                     AND smr.user_id = $2::uuid
-                     AND smr.server_id = c.server_id
-                     AND cp.can_view = TRUE
-                )
-                OR EXISTS (
-                   SELECT 1 
-                   FROM server_member_roles smr
-                   JOIN roles r ON r.id = smr.role_id
-                   WHERE smr.user_id = $2::uuid 
-                     AND smr.server_id = c.server_id 
-                     AND (r.can_manage_channels = TRUE OR r.can_manage_server = TRUE)
-                )
-              )
-            `
-            params.push(userId)
-         }
-      }
-
-      query += ` ORDER BY c.category, c.name`
-      
-      const ch = await pool.query(query, params)
-      
-      // Post-process canSendMessages
-      if (userId) {
-          const s = await pool.query(`SELECT owner_id FROM servers WHERE id=$1::uuid`, [serverId])
-          const isOwner = s.rows[0]?.owner_id === userId
-          
-          const allChannelIdsWithPerms = await pool.query(
-               `SELECT DISTINCT channel_id FROM channel_permissions 
-                JOIN channels ON channels.id = channel_permissions.channel_id
-                WHERE channels.server_id = $1::uuid`,
-               [serverId]
-          )
-          const restrictedChannels = new Set(allChannelIdsWithPerms.rows.map(r => r.channel_id))
-          
-          // Get channels where user has explicit ALLOW permission
-          const userPerms = await pool.query(
-               `SELECT cp.channel_id
-                FROM channel_permissions cp
-                JOIN server_member_roles smr ON smr.role_id = cp.role_id
-                WHERE smr.user_id = $1::uuid AND smr.server_id = $2::uuid
-                  AND cp.can_send_messages = TRUE`,
-               [userId, serverId]
-          )
-          const allowedByPerms = new Set<string>(userPerms.rows.map(r => r.channel_id))
-
-          // Check admin/manager permissions
-          const admin = await pool.query(
-               `SELECT 1 FROM server_member_roles smr
-                JOIN roles r ON r.id = smr.role_id
-                WHERE smr.user_id = $1::uuid AND smr.server_id = $2::uuid
-                  AND (r.can_manage_server = TRUE OR r.can_manage_channels = TRUE)`,
-               [userId, serverId]
-          )
-          const isAdmin = admin.rowCount && admin.rowCount > 0
-
-          for (const row of ch.rows) {
-              if (row.type === 'dm') {
-                 row.canSendMessages = true
-              } else if (isOwner || isAdmin) {
-                 row.canSendMessages = true
-              } else {
-                 // If restricted, must be in allowedByPerms
-                 if (restrictedChannels.has(row.id)) {
-                    row.canSendMessages = allowedByPerms.has(row.id)
-                 } else {
-                    // Public
-                    row.canSendMessages = true
-                 }
-              }
-          }
-      }
-
-      const cats = await pool.query(
+      const [channelRows, cats] = await Promise.all([
+        pool.query(
+          `SELECT c.id::text AS id, c.name, c.category, c.type, c.server_id::text AS "serverId"
+           FROM channels c
+           WHERE ($1::uuid IS NULL OR c.server_id = $1::uuid)
+           ORDER BY c.category, c.name`,
+          [serverId]
+        ),
+        pool.query(
         `SELECT name FROM channel_categories WHERE ($1::uuid IS NULL OR server_id=$1::uuid) ORDER BY name`,
         [serverId]
-      )
+        ),
+      ])
+
+      const channels = (channelRows.rows as { id: string; name: string; category: string; type: string; serverId: string | null }[]).map((row) => ({
+        id: row.id,
+        name: row.name,
+        category: row.category,
+        type: row.type,
+        canSendMessages: true,
+        canView: true,
+      }))
+
+      if (serverId && userId) {
+        const member = await pool.query(
+          `SELECT 1 FROM server_members WHERE server_id = $1::uuid AND user_id = $2::uuid LIMIT 1`,
+          [serverId, userId]
+        )
+        if (!member.rowCount) return { sections: [] }
+
+        const [ownerRow, roleRows] = await Promise.all([
+          pool.query(`SELECT owner_id::text AS owner_id FROM servers WHERE id = $1::uuid LIMIT 1`, [serverId]),
+          pool.query(
+            `SELECT smr.role_id::text AS role_id
+             FROM server_member_roles smr
+             WHERE smr.server_id = $1::uuid AND smr.user_id = $2::uuid`,
+            [serverId, userId]
+          ),
+        ])
+
+        const roleIds = roleRows.rows.map((r) => String(r.role_id))
+        const isOwner = String(ownerRow.rows[0]?.owner_id || "") === userId
+        let isAdmin = false
+        const restrictedChannels = new Set<string>()
+        const rolePermByChannel = new Map<string, { canView: boolean; canSendMessages: boolean }>()
+
+        if (!isOwner) {
+          if (roleIds.length > 0) {
+            const [adminRows, permRows] = await Promise.all([
+              pool.query(
+                `SELECT 1
+                 FROM roles
+                 WHERE server_id = $1::uuid
+                   AND id = ANY($2::uuid[])
+                   AND (can_manage_server = TRUE OR can_manage_channels = TRUE)
+                 LIMIT 1`,
+                [serverId, roleIds]
+              ),
+              pool.query(
+                `SELECT cp.channel_id::text AS channel_id,
+                        bool_or(cp.can_view) AS can_view,
+                        bool_or(cp.can_send_messages) AS can_send_messages
+                 FROM channel_permissions cp
+                 WHERE cp.channel_id IN (SELECT id FROM channels WHERE server_id = $1::uuid)
+                   AND cp.role_id = ANY($2::uuid[])
+                 GROUP BY cp.channel_id`,
+                [serverId, roleIds]
+              ),
+            ])
+            isAdmin = (adminRows.rowCount || 0) > 0
+            for (const row of permRows.rows as { channel_id: string; can_view: boolean; can_send_messages: boolean }[]) {
+              rolePermByChannel.set(String(row.channel_id), {
+                canView: !!row.can_view,
+                canSendMessages: !!row.can_send_messages,
+              })
+            }
+          }
+
+          const restrictedRows = await pool.query(
+            `SELECT DISTINCT cp.channel_id::text AS channel_id
+             FROM channel_permissions cp
+             JOIN channels c ON c.id = cp.channel_id
+             WHERE c.server_id = $1::uuid`,
+            [serverId]
+          )
+          for (const row of restrictedRows.rows as { channel_id: string }[]) {
+            restrictedChannels.add(String(row.channel_id))
+          }
+        }
+
+        for (const channel of channels) {
+          if (channel.type === "dm") {
+            channel.canView = true
+            channel.canSendMessages = true
+            continue
+          }
+
+          if (isOwner || isAdmin) {
+            channel.canView = true
+            channel.canSendMessages = true
+            continue
+          }
+
+          if (!restrictedChannels.has(channel.id)) {
+            channel.canView = true
+            channel.canSendMessages = true
+            continue
+          }
+
+          const perms = rolePermByChannel.get(channel.id)
+          channel.canView = !!perms?.canView
+          channel.canSendMessages = !!perms?.canSendMessages && channel.canView
+        }
+      }
+
+      const visibleChannels = channels.filter((c) => c.canView)
       const byCat = new Map<string, { id: string, name: string, type: string, canSendMessages: boolean }[]>()
-      for (const row of ch.rows as { id: string; name: string; category: string; type: string; canSendMessages: boolean }[]) {
+      for (const row of visibleChannels) {
         const arr = byCat.get(row.category) || []
         arr.push(row)
         byCat.set(row.category, arr)

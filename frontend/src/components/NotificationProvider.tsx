@@ -13,10 +13,12 @@ interface NotificationContextType {
 }
 
 const NotificationContext = createContext<NotificationContextType | undefined>(undefined)
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 export function NotificationProvider({ children }: { children: React.ReactNode }) {
-  const { user, isAuthenticated } = useAuth()
+  const { user, isAuthenticated, token } = useAuth()
   const [notifications, setNotifications] = useState<AppNotification[]>([])
+  const notificationsRef = useRef<AppNotification[]>([])
   const wsRef = useRef<WebSocket | null>(null)
   const retryAttemptRef = useRef(0)
   const reconnectTimeoutRef = useRef<number | null>(null)
@@ -24,8 +26,9 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
   // Fetch initial notifications
   useEffect(() => {
     if (isAuthenticated && user) {
-      const token = localStorage.getItem("token") || ""
-      api.getNotifications(token).then(res => {
+      const authToken = token || localStorage.getItem("token") || ""
+      if (!authToken) return
+      api.getNotifications(authToken).then(res => {
         if (res.notifications) {
            setNotifications(res.notifications)
         }
@@ -34,7 +37,7 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setNotifications([])
     }
-  }, [isAuthenticated, user])
+  }, [isAuthenticated, user, token])
 
   // WebSocket Connection for Notifications
   useEffect(() => {
@@ -116,30 +119,40 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
     }
   }, [isAuthenticated, user])
 
+  useEffect(() => {
+    notificationsRef.current = notifications
+  }, [notifications])
+
   const markRead = useCallback(async (id: string) => {
-    const token = localStorage.getItem("token") || ""
+    const authToken = token || localStorage.getItem("token") || ""
+    if (!authToken) return
     // Optimistic update
     setNotifications(prev => prev.map(n => n.id === id ? { ...n, read: true } : n))
-    await api.markNotificationRead(token, id)
-  }, [])
+    await api.markNotificationRead(authToken, id)
+  }, [token])
 
   const markChannelRead = useCallback(async (channelId: string) => {
-    const token = localStorage.getItem("token") || ""
+    const authToken = token || localStorage.getItem("token") || ""
+    if (!authToken || !UUID_RE.test(channelId)) return
+    const hasUnread = notificationsRef.current.some((n) => n.channelId === channelId && !n.read)
+    if (!hasUnread) return
     setNotifications(prev => prev.map(n => n.channelId === channelId ? { ...n, read: true } : n))
-    await api.markChannelNotificationsRead(token, channelId)
-  }, [])
+    await api.markChannelNotificationsRead(authToken, channelId)
+  }, [token])
 
   const markAllRead = useCallback(async () => {
-    const token = localStorage.getItem("token") || ""
+    const authToken = token || localStorage.getItem("token") || ""
+    if (!authToken) return
     setNotifications(prev => prev.map(n => ({ ...n, read: true })))
-    await api.markAllNotificationsRead(token)
-  }, [])
+    await api.markAllNotificationsRead(authToken)
+  }, [token])
 
   const deleteNotification = useCallback(async (id: string) => {
-    const token = localStorage.getItem("token") || ""
+    const authToken = token || localStorage.getItem("token") || ""
+    if (!authToken) return
     setNotifications(prev => prev.filter(n => n.id !== id))
-    await api.deleteNotification(token, id)
-  }, [])
+    await api.deleteNotification(authToken, id)
+  }, [token])
 
   const unreadCount = notifications.filter(n => !n.read).length
 

@@ -146,19 +146,19 @@ export async function messageRoutes(app: FastifyInstance) {
             // User can send if ANY of their roles allow it (Logical OR)
             const canSend = perms.rows.some(r => r.can_send_messages)
             
-            // Check if owner
-            const serv = await pool.query(`SELECT owner_id FROM servers WHERE id=$1::uuid`, [c.rows[0].server_id])
-            const isOwner = serv.rows[0]?.owner_id === payload.sub
-            
-            // Check if admin
-            const admin = await pool.query(
-               `SELECT 1 FROM server_member_roles smr
-                JOIN roles r ON r.id = smr.role_id
-                WHERE smr.user_id = $1::uuid AND smr.server_id = $2::uuid
-                  AND (r.can_manage_server = TRUE OR r.can_manage_channels = TRUE)`,
-               [payload.sub, c.rows[0].server_id]
-            )
+            const [serv, admin] = await Promise.all([
+              pool.query(`SELECT owner_id FROM servers WHERE id=$1::uuid`, [c.rows[0].server_id]),
+              pool.query(
+                 `SELECT 1 FROM server_member_roles smr
+                  JOIN roles r ON r.id = smr.role_id
+                  WHERE smr.user_id = $1::uuid AND smr.server_id = $2::uuid
+                    AND (r.can_manage_server = TRUE OR r.can_manage_channels = TRUE)
+                  LIMIT 1`,
+                 [payload.sub, c.rows[0].server_id]
+              ),
+            ])
             const isAdmin = admin.rowCount && admin.rowCount > 0
+            const isOwner = serv.rows[0]?.owner_id === payload.sub
             
             if (!canSend && !isOwner && !isAdmin) return { error: "Missing permissions" }
          }
@@ -179,112 +179,6 @@ export async function messageRoutes(app: FastifyInstance) {
       const sender = (ur.rows[0]?.name as string) || "User"
       const avatar = ur.rows[0]?.avatar_url as string | null
       
-      let roleColor: string | undefined
-      const targetServerId = c.rows[0].server_id
-      if (c.rows[0].type !== 'dm') {
-          try {
-             const rc = await pool.query(
-               `SELECT roles.color 
-                FROM server_member_roles 
-                JOIN roles ON roles.id = server_member_roles.role_id
-                WHERE server_member_roles.server_id = $1::uuid AND server_member_roles.user_id = $2::uuid
-                ORDER BY roles.position ASC LIMIT 1`,
-               [c.rows[0].server_id, payload.sub]
-             )
-             roleColor = rc.rows[0]?.color
-          } catch {}
-      }
-
-      // --- NOTIFICATIONS & MENTIONS ---
-      
-      // 1. Handle DM Notifications (Notify all other members)
-       if (c.rows[0].type === 'dm') {
-           const members = await pool.query(`SELECT user_id FROM channel_members WHERE channel_id=$1::uuid AND user_id!=$2::uuid`, [channelId, payload.sub])
-           for (const mem of members.rows) {
-              await createNotification(mem.user_id, 'message', m.id, 'dm', `New message from ${sender}`, channelId)
-           }
-       }
- 
-       // 2. Handle Mentions in Server Channels
-       if (c.rows[0].type !== 'dm' && content) {
-           // Regex to find @username
-           // We look for @Username (word characters)
-           // This is a simple heuristic. Ideally we'd use unique IDs or discriminators.
-           const mentions = content.match(/@([a-zA-Z0-9_]+)/g)
-           if (mentions) {
-              const uniqueNames = [...new Set(mentions.map((m: string) => m.slice(1)))] // remove @
-              for (const name of uniqueNames) {
-                 // Find user in this server with this username
-                 const u = await pool.query(
-                     `SELECT u.id FROM users u
-                      JOIN server_members sm ON sm.user_id = u.id
-                      WHERE sm.server_id = $1::uuid AND u.username = $2
-                      LIMIT 1`,
-                     [targetServerId, name]
-                 )
-                 if (u.rowCount && u.rowCount > 0) {
-                     const mentionedUserId = u.rows[0].id
-                     if (mentionedUserId !== payload.sub) {
-                         // Check if user has access to this channel
-                         let hasAccess = true
-                         // We can reuse the logic from servers.ts or similar, or do a quick check here.
-                         // Since notifications are critical, we should ensure we don't leak channel existence or notify people who can't see it.
-                         
-                         // Check if channel is private
-                         const ch = await pool.query(`SELECT is_private, server_id FROM channels WHERE id=$1::uuid`, [channelId])
-                         if (ch.rows[0]?.is_private) {
-                             hasAccess = false
-                             // Check permissions
-                             const perms = await pool.query(`SELECT role_id, user_id, allow, deny FROM channel_permissions WHERE channel_id=$1::uuid`, [channelId])
-                             const server = await pool.query(`SELECT owner_id FROM servers WHERE id=$1::uuid`, [targetServerId])
-                             const ownerId = server.rows[0]?.owner_id
-                             
-                             if (mentionedUserId === ownerId) {
-                                 hasAccess = true
-                             } else {
-                                 // Get user roles
-                                 const roles = await pool.query(`SELECT role_id FROM server_member_roles WHERE user_id=$1::uuid AND server_id=$2::uuid`, [mentionedUserId, targetServerId])
-                                 const userRoleIds = roles.rows.map(r => r.role_id)
-                                 
-                                 // Check admin
-                                 const adminRoles = await pool.query(`SELECT id FROM roles WHERE server_id=$1::uuid AND (permissions & 8) = 8`, [targetServerId])
-                                 const adminRoleIds = new Set(adminRoles.rows.map(r => r.id))
-                                 
-                                 if (userRoleIds.some((r: string) => adminRoleIds.has(r))) {
-                                     hasAccess = true
-                                 } else {
-                                     // Check overrides
-                                     const userPerm = perms.rows.find(p => p.user_id === mentionedUserId)
-                                     let allow = false
-                                     let deny = false
-                                     
-                                     if (userPerm) {
-                                         if ((userPerm.allow & 1024) === 1024) allow = true
-                                         if ((userPerm.deny & 1024) === 1024) deny = true
-                                     }
-                                     
-                                     for (const rid of userRoleIds) {
-                                         const rp = perms.rows.find(p => p.role_id === rid)
-                                         if (rp) {
-                                             if ((rp.allow & 1024) === 1024) allow = true
-                                             if ((rp.deny & 1024) === 1024) deny = true
-                                         }
-                                     }
-                                     
-                                     if (allow && !deny) hasAccess = true
-                                 }
-                             }
-                         }
-                         
-                         if (hasAccess) {
-                            await createNotification(mentionedUserId, 'mention', m.id, 'message', `You were mentioned by ${sender} in #${channel}`, channelId)
-                         }
-                     }
-                 }
-              }
-           }
-       }
-
       const msgData = { 
         id: m.id, 
         text: m.text, 
@@ -293,17 +187,156 @@ export async function messageRoutes(app: FastifyInstance) {
       }
 
       try {
-        await redis.publish("messages", JSON.stringify({ channel: channelId, data: { type: "message", channel: channelId, message: msgData, user: sender, userAvatar: avatar, userId: payload.sub, roleColor } }))
+        const publishes: Promise<number>[] = [
+          redis.publish("messages", JSON.stringify({ channel: channelId, data: { type: "message", channel: channelId, message: msgData, user: sender, userAvatar: avatar, userId: payload.sub } })),
+        ]
         if (channel !== channelId) {
-           await redis.publish("messages", JSON.stringify({ channel, data: { type: "message", channel, message: msgData, user: sender, userAvatar: avatar, userId: payload.sub, roleColor } }))
+          publishes.push(
+            redis.publish("messages", JSON.stringify({ channel, data: { type: "message", channel, message: msgData, user: sender, userAvatar: avatar, userId: payload.sub } })),
+          )
         }
+        await Promise.all(publishes)
       } catch {}
-      return { message: { ...msgData, roleColor } }
+
+      // Offload notifications/mentions from the response path.
+      void processMessageSideEffects({
+        channelId,
+        channelName: channel,
+        channelType: c.rows[0].type,
+        serverId: c.rows[0].server_id,
+        senderId: payload.sub,
+        senderName: sender,
+        messageId: m.id,
+        content: content || "",
+      })
+
+      return { message: msgData }
     } catch (e) {
       console.error("POST /api/messages error:", e)
       return { error: `Unauthorized: ${e}` }
     }
   })
+
+async function processMessageSideEffects(args: {
+  channelId: string
+  channelName: string
+  channelType: "dm" | string
+  serverId?: string
+  senderId: string
+  senderName: string
+  messageId: string
+  content: string
+}) {
+  const { channelId, channelName, channelType, serverId, senderId, senderName, messageId, content } = args
+  try {
+    if (channelType === "dm") {
+      const members = await pool.query(
+        `SELECT user_id::text AS user_id FROM channel_members WHERE channel_id=$1::uuid AND user_id!=$2::uuid`,
+        [channelId, senderId]
+      )
+      await Promise.all(
+        members.rows.map((mem) =>
+          createNotification(mem.user_id as string, "message", messageId, "dm", `New message from ${senderName}`, channelId)
+        )
+      )
+      return
+    }
+
+    if (!serverId || !content) return
+    const mentions = content.match(/@([a-zA-Z0-9_]+)/g)
+    if (!mentions || mentions.length === 0) return
+
+    const uniqueNames = [...new Set(mentions.map((m) => m.slice(1)))]
+    if (uniqueNames.length === 0) return
+
+    const users = await pool.query(
+      `SELECT u.id::text AS id
+       FROM users u
+       JOIN server_members sm ON sm.user_id = u.id
+       WHERE sm.server_id = $1::uuid
+         AND u.username = ANY($2::text[])`,
+      [serverId, uniqueNames]
+    )
+    const mentionedUserIds = users.rows
+      .map((u) => String(u.id))
+      .filter((uid) => uid && uid !== senderId)
+    if (mentionedUserIds.length === 0) return
+
+    const channelPerms = await pool.query(
+      `SELECT role_id::text AS role_id, can_view
+       FROM channel_permissions
+       WHERE channel_id = $1::uuid`,
+      [channelId]
+    )
+    const restricted = (channelPerms.rowCount || 0) > 0
+    let allowedUserIds = new Set<string>(mentionedUserIds)
+
+    if (restricted) {
+      const [serverRow, rolesRow] = await Promise.all([
+        pool.query(`SELECT owner_id::text AS owner_id FROM servers WHERE id = $1::uuid`, [serverId]),
+        pool.query(
+          `SELECT smr.user_id::text AS user_id,
+                  smr.role_id::text AS role_id,
+                  r.can_manage_server,
+                  r.can_manage_channels
+           FROM server_member_roles smr
+           JOIN roles r ON r.id = smr.role_id
+           WHERE smr.server_id = $1::uuid
+             AND smr.user_id = ANY($2::uuid[])`,
+          [serverId, mentionedUserIds]
+        ),
+      ])
+
+      const ownerId = String(serverRow.rows[0]?.owner_id || "")
+      const canViewRoleIds = new Set(
+        channelPerms.rows
+          .filter((row) => !!row.can_view)
+          .map((row) => String(row.role_id))
+      )
+      const rolesByUser = new Map<
+        string,
+        { roleId: string; canManageServer: boolean; canManageChannels: boolean }[]
+      >()
+
+      for (const row of rolesRow.rows) {
+        const userId = String(row.user_id)
+        const arr = rolesByUser.get(userId) || []
+        arr.push({
+          roleId: String(row.role_id),
+          canManageServer: !!row.can_manage_server,
+          canManageChannels: !!row.can_manage_channels,
+        })
+        rolesByUser.set(userId, arr)
+      }
+
+      allowedUserIds = new Set<string>()
+      for (const uid of mentionedUserIds) {
+        if (uid === ownerId) {
+          allowedUserIds.add(uid)
+          continue
+        }
+        const userRoles = rolesByUser.get(uid) || []
+        const isManager = userRoles.some((r) => r.canManageServer || r.canManageChannels)
+        if (isManager) {
+          allowedUserIds.add(uid)
+          continue
+        }
+        const canView = userRoles.some((r) => canViewRoleIds.has(r.roleId))
+        if (canView) {
+          allowedUserIds.add(uid)
+        }
+      }
+    }
+
+    await Promise.all(
+      [...allowedUserIds].map((uid) =>
+        createNotification(uid, "mention", messageId, "message", `You were mentioned by ${senderName} in #${channelName}`, channelId)
+      )
+    )
+  } catch (e) {
+    console.error("Failed to process message side effects", e)
+  }
+}
 
 async function createNotification(userId: string, type: string, sourceId: string, sourceType: string, content: string, channelId?: string) {
     try {

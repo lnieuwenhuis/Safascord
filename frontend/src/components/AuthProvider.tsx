@@ -42,6 +42,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       return
     }
 
+    const cachedUser = localStorage.getItem("user")
+    if (cachedUser) {
+      try {
+        const parsed = JSON.parse(cachedUser) as User
+        setUser((prev) => prev ?? parsed)
+        setIsAuthenticated(true)
+      } catch {
+        // Ignore invalid cache and continue with API validation.
+      }
+    }
+
     try {
       const res = await api.me(token)
       if (res.error || !res.user) {
@@ -53,7 +64,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
     } catch (err) {
       console.error("Session check failed", err)
-      logout()
+      const message = err instanceof Error ? err.message.toLowerCase() : ""
+      if (message.includes("unauthorized") || message.includes("forbidden") || message.includes("401")) {
+        logout()
+      } else if (localStorage.getItem("token")) {
+        // Keep active session on transient API failures.
+        setIsAuthenticated(true)
+      }
     } finally {
       setIsLoading(false)
     }

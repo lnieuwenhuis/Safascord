@@ -7,8 +7,15 @@ export async function userRoutes(app: FastifyInstance) {
   app.get("/api/me", async (req) => {
     const auth = (req.headers as any).authorization as string | undefined
     if (!auth) return { error: "Unauthorized" }
+
+    let payload: any
     try {
-      const payload = jwt.verify(auth.replace(/^Bearer\s+/i, ""), JWT_SECRET) as any
+      payload = jwt.verify(auth.replace(/^Bearer\s+/i, ""), JWT_SECRET) as any
+    } catch {
+      return { error: "Unauthorized" }
+    }
+
+    try {
       const r = await pool.query(
         `SELECT id::text AS id, username, email, display_name, bio, banner_color, banner_url, avatar_url, custom_background_url, custom_background_opacity, status, discriminator, allow_dms_from_strangers AS "allowDmsFromStrangers", notifications_quiet_mode AS "notificationsQuietMode"
          FROM users WHERE id = $1::uuid`,
@@ -32,8 +39,9 @@ export async function userRoutes(app: FastifyInstance) {
         allowDmsFromStrangers: u.allowDmsFromStrangers,
         notificationsQuietMode: u.notificationsQuietMode
       } }
-    } catch {
-      return { error: "Unauthorized" }
+    } catch (e) {
+      console.error("GET /api/me error:", e)
+      return { error: "Failed to load profile" }
     }
   })
 
@@ -97,12 +105,18 @@ export async function userRoutes(app: FastifyInstance) {
     const body = req.body as any
     const { bio, bannerColor, bannerUrl, avatarUrl, customBackgroundUrl, customBackgroundOpacity, status, username, displayName } = body || {}
     if (!auth) return { error: "Unauthorized" }
+
+    let payload: any
     try {
-      const payload = jwt.verify(auth.replace(/^Bearer\s+/i, ""), JWT_SECRET) as any
-      
+      payload = jwt.verify(auth.replace(/^Bearer\s+/i, ""), JWT_SECRET) as any
+    } catch {
+      return { error: "Unauthorized" }
+    }
+
+    try {
       if (username) {
-         const check = await pool.query("SELECT 1 FROM users WHERE username=$1 AND id!=$2::uuid LIMIT 1", [username, payload.sub])
-         if (check.rowCount && check.rowCount > 0) return { error: "Username taken" }
+        const check = await pool.query("SELECT 1 FROM users WHERE username=$1 AND id!=$2::uuid LIMIT 1", [username, payload.sub])
+        if (check.rowCount && check.rowCount > 0) return { error: "Username taken" }
       }
 
       const fields: string[] = []
@@ -148,8 +162,9 @@ export async function userRoutes(app: FastifyInstance) {
         status: u.status,
         notificationsQuietMode: u.notificationsQuietMode
       } }
-    } catch {
-      return { error: "Unauthorized" }
+    } catch (e) {
+      console.error("PATCH /api/me/profile error:", e)
+      return { error: "Failed to update profile" }
     }
   })
 
