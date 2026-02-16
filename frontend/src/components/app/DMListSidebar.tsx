@@ -1,22 +1,29 @@
-import { useEffect, useState } from "react"
+import { useEffect } from "react"
 import UserCard from "./UserCard"
 import { useNavigate } from "react-router-dom"
 import { api } from "../../lib/api"
 import { useAuth } from "../../hooks/useAuth"
+import { useAppCacheStore } from "@/stores/cacheStore"
 
 export default function DMListSidebar() {
   const navigate = useNavigate()
   const { token } = useAuth()
-  const [dms, setDms] = useState<{ id: string; user: { username: string; displayName: string; avatarUrl?: string; status: string } }[]>([])
+  const dms = useAppCacheStore((state) => state.dms) || []
+  const setCachedDms = useAppCacheStore((state) => state.setDms)
 
   useEffect(() => {
     if (!token) return
+    let cancelled = false
     api.getDMs(token).then(res => {
+      if (cancelled) return
       if (res.dms) {
-        setDms(res.dms)
+        setCachedDms(res.dms)
       }
     }).catch(console.error)
-  }, [token])
+    return () => {
+      cancelled = true
+    }
+  }, [token, setCachedDms])
 
   return (
     <aside className="flex h-dvh w-full flex-col bg-slate-950/86 text-slate-100 backdrop-blur-xl">

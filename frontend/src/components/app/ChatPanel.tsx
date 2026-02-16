@@ -8,6 +8,7 @@ import { cn } from "@/lib/utils"
 import { useNotifications } from "../NotificationProvider"
 import UserProfileDialog from "./UserProfileDialog"
 import type { Message, UserSummary } from "@/types"
+import { useAppCacheStore } from "@/stores/cacheStore"
 
 interface ChatPanelProps {
   variant: "guild" | "dm"
@@ -105,6 +106,10 @@ function AttachmentBubble({ url }: { url: string }) {
 
 export default function ChatPanel({ variant, channelName, channelId, guildName, guildId, onMobileMenu, onUserListToggle, showUserList, canSend = true, dmUser }: ChatPanelProps) {
   const { markChannelRead } = useNotifications()
+  const channelKey = channelId || channelName
+  const setCachedChannelMessages = useAppCacheStore((state) => state.setChannelMessages)
+  const myRoleColor = useAppCacheStore((state) => (guildId ? state.myRoleColorByServer[guildId] : undefined))
+  const setMyRoleColorForServer = useAppCacheStore((state) => state.setMyRoleColorForServer)
   const [msgs, setMsgs] = useState<Message[]>([])
   const [text, setText] = useState("")
   const [typing, setTyping] = useState<Set<string>>(new Set())
@@ -134,7 +139,42 @@ export default function ChatPanel({ variant, channelName, channelId, guildName, 
 
   const { user } = useAuth()
   const token = typeof window !== "undefined" ? (localStorage.getItem("token") || "") : ""
-  const channelKey = channelId || channelName
+
+  useEffect(() => {
+    if (variant !== "guild" || !guildId || !token || !user?.id || myRoleColor) return
+    let cancelled = false
+
+    const loadMyRoleColor = async () => {
+      try {
+        const [rolesRes, membersRes] = await Promise.all([
+          api.getRoles(token, guildId),
+          api.getServerMembers(token, guildId),
+        ])
+        if (cancelled) return
+
+        const me = (membersRes.members || []).find((member) => member.id === user.id)
+        if (!me) return
+
+        const roleById = new Map((rolesRes.roles || []).map((role) => [role.id, role]))
+        let highest: { position: number; color?: string } | null = null
+        for (const roleId of me.roles || []) {
+          const role = roleById.get(roleId)
+          if (!role) continue
+          if (!highest || role.position > highest.position) {
+            highest = { position: role.position, color: role.color }
+          }
+        }
+        setMyRoleColorForServer(guildId, highest?.color)
+      } catch {
+        // No-op: role color fallback remains unset.
+      }
+    }
+
+    void loadMyRoleColor()
+    return () => {
+      cancelled = true
+    }
+  }, [guildId, myRoleColor, setMyRoleColorForServer, token, user?.id, variant])
 
   useEffect(() => {
     if (channelKey) {
@@ -143,7 +183,6 @@ export default function ChatPanel({ variant, channelName, channelId, guildName, 
   }, [channelKey, markChannelRead])
   
   useEffect(() => {
-    setMsgs([])
     setTyping(new Set())
     if (variant === "dm" && channelName && token) {
       // Try to find the DM user name
@@ -347,11 +386,24 @@ export default function ChatPanel({ variant, channelName, channelId, guildName, 
     if (!channelKey) return
     let cancelled = false
     const authToken = localStorage.getItem("token") || ""
+    const cachedSnapshot = useAppCacheStore.getState().messagesByChannel[channelKey]
+    const hasCachedSnapshot = !!cachedSnapshot?.loaded
 
-    setMsgs([])
-    setHasMore(true)
-    setLoadingInitial(true)
-    oldestTimestampRef.current = undefined
+    if (hasCachedSnapshot) {
+      setMsgs(cachedSnapshot.messages)
+      setHasMore(cachedSnapshot.hasMore)
+      setLoadingInitial(false)
+      oldestTimestampRef.current = cachedSnapshot.oldestTimestamp
+      requestAnimationFrame(() => {
+        scrollToBottom("auto")
+      })
+    } else {
+      setMsgs([])
+      setHasMore(true)
+      setLoadingInitial(true)
+      oldestTimestampRef.current = undefined
+    }
+
     loadingMoreRef.current = false
     setLoadingMore(false)
     isAtBottomRef.current = true
@@ -381,17 +433,30 @@ export default function ChatPanel({ variant, channelName, channelId, guildName, 
           if (list.scrollHeight > list.clientHeight + 24) break
           if (batch.length === 0) break
         }
+
+        if (!cancelled) {
+          setCachedChannelMessages(channelKey, {
+            messages: merged,
+            hasMore: more,
+            oldestTimestamp: merged[0]?.ts,
+            loaded: true,
+          })
+        }
       } catch (e) {
         console.error("Failed to load messages", e)
         if (!cancelled) {
-          setMsgs([])
-          setHasMore(false)
+          if (!hasCachedSnapshot) {
+            setMsgs([])
+            setHasMore(false)
+          }
         }
       } finally {
         if (!cancelled) {
           setLoadingInitial(false)
-          await nextFrame()
-          scrollToBottom("auto")
+          if (!hasCachedSnapshot) {
+            await nextFrame()
+            scrollToBottom("auto")
+          }
         }
       }
     }
@@ -401,7 +466,17 @@ export default function ChatPanel({ variant, channelName, channelId, guildName, 
     return () => {
       cancelled = true
     }
-  }, [channelKey, guildId, nextFrame, scrollToBottom])
+  }, [channelKey, guildId, nextFrame, scrollToBottom, setCachedChannelMessages])
+
+  useEffect(() => {
+    if (!channelKey || loadingInitial) return
+    setCachedChannelMessages(channelKey, {
+      messages: msgs,
+      hasMore,
+      oldestTimestamp: oldestTimestampRef.current,
+      loaded: true,
+    })
+  }, [channelKey, hasMore, loadingInitial, msgs, setCachedChannelMessages])
 
   useEffect(() => {
     if (!channelKey) return
@@ -499,7 +574,7 @@ export default function ChatPanel({ variant, channelName, channelId, guildName, 
                 text: d.message!.text,
                 attachmentUrl: d.message!.attachmentUrl,
                 ts: d.message!.ts || new Date().toISOString(),
-                roleColor: d.roleColor,
+                roleColor: d.roleColor || (variant === "guild" && d.userId === user?.id ? myRoleColor : undefined),
               }]
             })
             if (shouldAutoScroll) {
@@ -559,7 +634,7 @@ export default function ChatPanel({ variant, channelName, channelId, guildName, 
       try { cur.close() } catch (e) { console.error(e) }
       wsRef.current = null
     }
-  }, [channelKey, channelName, isNearBottom, scrollToBottom, user?.id])
+  }, [channelKey, channelName, isNearBottom, myRoleColor, scrollToBottom, user?.id, variant])
 
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
@@ -577,6 +652,19 @@ export default function ChatPanel({ variant, channelName, channelId, guildName, 
     setSelectedFile(null)
     if (fileInputRef.current) fileInputRef.current.value = ""
   }
+
+  const applyMessagesUpdate = useCallback((updater: (prev: Message[]) => Message[]) => {
+    setMsgs((prev) => {
+      const next = updater(prev)
+      setCachedChannelMessages(channelKey, {
+        messages: next,
+        hasMore,
+        oldestTimestamp: oldestTimestampRef.current,
+        loaded: true,
+      })
+      return next
+    })
+  }, [channelKey, hasMore, setCachedChannelMessages])
 
   const send = async () => {
     const t = text.trim()
@@ -607,29 +695,65 @@ export default function ChatPanel({ variant, channelName, channelId, guildName, 
        if (!attachmentUrl && !t) return // Upload failed and no text
     }
 
+    let optimisticId: string | null = null
     try {
       const shouldAutoScroll = isNearBottom()
       if (token) {
-        const r = await api.sendMessage(token, channelKey, t, guildId, attachmentUrl)
-        if ("error" in r) {
-          console.error("Error sending message:", r.error)
-          return
+        optimisticId = `local:${Date.now()}:${Math.random().toString(36).slice(2, 8)}`
+        const optimisticTs = new Date().toISOString()
+        const optimisticMessage: Message = {
+          id: optimisticId,
+          user: display,
+          userAvatar: myAvatar || undefined,
+          userId: user?.id,
+          text: t,
+          attachmentUrl,
+          ts: optimisticTs,
+          roleColor: variant === "guild" ? myRoleColor : undefined,
         }
-        const ts = r.message.ts
-        setMsgs((prev) => {
-          if (prev.some((x) => x.id === r.message!.id)) return prev
-          return [...prev, { id: r.message!.id, user: display, userAvatar: myAvatar || undefined, userId: user?.id, text: t, attachmentUrl: (r.message).attachmentUrl, ts, roleColor: (r.message).roleColor }]
-        })
+
+        applyMessagesUpdate((prev) => [...prev, optimisticMessage])
         if (shouldAutoScroll) {
           requestAnimationFrame(() => {
             scrollToBottom("smooth")
           })
         }
+
+        const r = await api.sendMessage(token, channelKey, t, guildId, attachmentUrl)
+        if ("error" in r) {
+          console.error("Error sending message:", r.error)
+          applyMessagesUpdate((prev) => prev.filter((x) => x.id !== optimisticId))
+          return
+        }
+        const confirmedMessage: Message = {
+          id: r.message.id,
+          user: display,
+          userAvatar: myAvatar || undefined,
+          userId: user?.id,
+          text: t,
+          attachmentUrl: r.message.attachmentUrl,
+          ts: r.message.ts,
+          roleColor: r.message.roleColor || (variant === "guild" ? myRoleColor : undefined),
+        }
+
+        applyMessagesUpdate((prev) => {
+          const withoutOptimistic = prev.filter((x) => x.id !== optimisticId)
+          if (withoutOptimistic.some((x) => x.id === confirmedMessage.id)) {
+            return withoutOptimistic.map((x) =>
+              x.id === confirmedMessage.id
+                ? { ...x, roleColor: x.roleColor || confirmedMessage.roleColor }
+                : x,
+            )
+          }
+          return [...withoutOptimistic, confirmedMessage]
+        })
       } else {
-        setMsgs((prev) => [...prev, { id: String(Date.now()), user: display, text: t, ts: new Date().toISOString() }])
+        applyMessagesUpdate((prev) => [...prev, { id: String(Date.now()), user: display, text: t, ts: new Date().toISOString() }])
       }
     } catch {
-      setMsgs((prev) => [...prev, { id: String(Date.now()), user: display, text: t, ts: new Date().toISOString() }])
+      if (optimisticId) {
+        applyMessagesUpdate((prev) => prev.filter((x) => x.id !== optimisticId))
+      }
     }
   }
 

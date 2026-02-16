@@ -14,30 +14,65 @@ interface NotificationContextType {
 
 const NotificationContext = createContext<NotificationContextType | undefined>(undefined)
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+const NOTIFICATION_LIMIT = 100
+const FALLBACK_POLL_INTERVAL_MS = 2000
 
 export function NotificationProvider({ children }: { children: React.ReactNode }) {
   const { user, isAuthenticated, token } = useAuth()
   const [notifications, setNotifications] = useState<AppNotification[]>([])
   const notificationsRef = useRef<AppNotification[]>([])
   const wsRef = useRef<WebSocket | null>(null)
+  const socketConnectedRef = useRef(false)
   const retryAttemptRef = useRef(0)
   const reconnectTimeoutRef = useRef<number | null>(null)
 
-  // Fetch initial notifications
+  const mergeNotifications = useCallback((incoming: AppNotification[]) => {
+    setNotifications((prev) => {
+      const incomingIds = new Set<string>()
+      const prevById = new Map(prev.map((n) => [n.id, n]))
+
+      const merged = incoming.map((n) => {
+        incomingIds.add(n.id)
+        const existing = prevById.get(n.id)
+        if (!existing) return n
+        // Preserve optimistic read state until backend catches up.
+        return { ...n, read: existing.read || n.read }
+      })
+
+      for (const n of prev) {
+        if (!incomingIds.has(n.id)) merged.push(n)
+      }
+
+      merged.sort((a, b) => {
+        const aTs = Date.parse(a.ts)
+        const bTs = Date.parse(b.ts)
+        if (Number.isNaN(aTs) || Number.isNaN(bTs)) return 0
+        return bTs - aTs
+      })
+      return merged.slice(0, NOTIFICATION_LIMIT)
+    })
+  }, [])
+
+  const fetchNotifications = useCallback(async () => {
+    if (!isAuthenticated || !user) return
+    const authToken = token || localStorage.getItem("token") || ""
+    if (!authToken) return
+    try {
+      const res = await api.getNotifications(authToken)
+      if (res.notifications) mergeNotifications(res.notifications)
+    } catch (e) {
+      console.error("Failed to fetch notifications", e)
+    }
+  }, [isAuthenticated, user, token, mergeNotifications])
+
   useEffect(() => {
-    if (isAuthenticated && user) {
-      const authToken = token || localStorage.getItem("token") || ""
-      if (!authToken) return
-      api.getNotifications(authToken).then(res => {
-        if (res.notifications) {
-           setNotifications(res.notifications)
-        }
-      }).catch(console.error)
-    } else {
+    if (!isAuthenticated || !user) {
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setNotifications([])
+      return
     }
-  }, [isAuthenticated, user, token])
+    void fetchNotifications()
+  }, [isAuthenticated, user, fetchNotifications])
 
   // WebSocket Connection for Notifications
   useEffect(() => {
@@ -46,6 +81,7 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
          wsRef.current.close()
          wsRef.current = null
        }
+       socketConnectedRef.current = false
        if (reconnectTimeoutRef.current) {
          window.clearTimeout(reconnectTimeoutRef.current)
          reconnectTimeoutRef.current = null
@@ -75,6 +111,7 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
 
         ws.onopen = () => {
           retryAttemptRef.current = 0
+          socketConnectedRef.current = true
           ws.send(JSON.stringify({ type: "subscribe", channel: userChannel }))
         }
 
@@ -83,7 +120,10 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
             const data = JSON.parse(String(ev.data))
             if (data.type === "notification" && data.notification) {
               const n = data.notification as AppNotification
-              setNotifications((prev) => [n, ...prev])
+              setNotifications((prev) => {
+                if (prev.some((existing) => existing.id === n.id)) return prev
+                return [n, ...prev].slice(0, NOTIFICATION_LIMIT)
+              })
             }
           } catch (e) {
             console.error("Error processing notification:", e)
@@ -100,6 +140,7 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
 
         ws.onclose = () => {
           if (wsRef.current === ws) wsRef.current = null
+          socketConnectedRef.current = false
           scheduleReconnect()
         }
       } catch {
@@ -116,8 +157,41 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
         reconnectTimeoutRef.current = null
       }
       if (wsRef.current) wsRef.current.close()
+      socketConnectedRef.current = false
     }
   }, [isAuthenticated, user])
+
+  // If websocket delivery is unavailable, keep notifications fresh without requiring reload.
+  useEffect(() => {
+    if (!isAuthenticated || !user) return
+    let cancelled = false
+
+    const poll = async () => {
+      if (cancelled || socketConnectedRef.current) return
+      await fetchNotifications()
+    }
+
+    const interval = window.setInterval(() => {
+      void poll()
+    }, FALLBACK_POLL_INTERVAL_MS)
+
+    const onForeground = () => {
+      if (document.visibilityState !== "visible") return
+      void poll()
+    }
+
+    document.addEventListener("visibilitychange", onForeground)
+    window.addEventListener("focus", onForeground)
+
+    void poll()
+
+    return () => {
+      cancelled = true
+      window.clearInterval(interval)
+      document.removeEventListener("visibilitychange", onForeground)
+      window.removeEventListener("focus", onForeground)
+    }
+  }, [isAuthenticated, user, fetchNotifications])
 
   useEffect(() => {
     notificationsRef.current = notifications
