@@ -1,4 +1,4 @@
-import { MemoryRouter, Routes, Route, Navigate, useLocation } from "react-router-dom"
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-router-dom"
 import { useEffect } from "react"
 import { AuthProvider } from "./components/AuthProvider"
 import { NotificationProvider } from "./components/NotificationProvider"
@@ -66,43 +66,11 @@ function RoutePersister() {
   return null
 }
 
-function URLHider() {
-  const location = useLocation()
-  
-  useEffect(() => {
-    const publicPaths = ["/", "/auth"]
-    const isPublic = publicPaths.includes(location.pathname) || location.pathname === "/404"
-    
-    if (!isPublic) {
-      if (window.location.pathname !== "/safascord") {
-        window.history.replaceState(null, "", "/safascord")
-      }
-    } else {
-      // If we are on a public page, show the real URL (e.g. /, /auth)
-      // This prevents the user from being confused when they are on the home page but see /safascord
-      if (window.location.pathname !== location.pathname) {
-        window.history.replaceState(null, "", location.pathname)
-      }
-    }
-  }, [location])
-  return null
-}
-
 export default function App() {
-  const currentPath = window.location.pathname + window.location.search + window.location.hash
-  const storedPath = localStorage.getItem("last_route")
-  
-  // Clean up stored path if it's invalid
-  const validStoredPath = (storedPath && storedPath !== "/404") ? storedPath : "/"
-  
-  // Use current path if it's a deep link (not / or /safascord), otherwise restore last session
-  const initialPath = (currentPath === "/safascord") ? validStoredPath : currentPath
-
   return (
     <AuthProvider>
       <NotificationProvider>
-        <MemoryRouter initialEntries={[initialPath]}>
-          <URLHider />
+        <BrowserRouter>
           <RoutePersister />
           <BackgroundManager />
           <Routes>
@@ -122,7 +90,7 @@ export default function App() {
             <Route path="/404" element={<NotFound />} />
             <Route path="*" element={<Navigate to="/404" replace />} />
           </Routes>
-        </MemoryRouter>
+        </BrowserRouter>
       </NotificationProvider>
     </AuthProvider>
   )

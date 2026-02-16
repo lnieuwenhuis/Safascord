@@ -15,19 +15,19 @@ export function Sheet({ open, onOpenChange, children, side = "left" }: SheetProp
   return (
     <div className="fixed inset-0 z-50 flex">
       <div 
-        className="fixed inset-0 bg-black/50 transition-opacity" 
+        className="fixed inset-0 bg-slate-950/40 backdrop-blur-[2px] transition-opacity" 
         onClick={() => onOpenChange(false)}
       />
       <div 
         className={cn(
-          "relative z-50 flex h-full w-3/4 max-w-sm flex-col bg-background shadow-xl transition-transform duration-300 ease-in-out sm:w-[350px]",
+          "relative z-50 flex h-full w-3/4 max-w-sm flex-col border-base-300/80 bg-base-100/95 shadow-2xl backdrop-blur-md transition-transform duration-300 ease-in-out sm:w-[360px]",
           side === "left" ? "mr-auto border-r" : "ml-auto border-l",
           // Animation classes could be added here if we had AnimatePresence or similar, 
           // but for now simple rendering is fine or we can add CSS animations.
         )}
       >
-        <div className="absolute right-4 top-4 rounded-sm opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:pointer-events-none data-[state=open]:bg-secondary">
-          <button onClick={() => onOpenChange(false)}>
+        <div className="absolute right-3 top-3 z-10">
+          <button className="btn btn-ghost btn-sm btn-square" onClick={() => onOpenChange(false)}>
             <X className="h-4 w-4" />
             <span className="sr-only">Close</span>
           </button>

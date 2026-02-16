@@ -1,10 +1,62 @@
 import { FastifyInstance } from "fastify"
 import { pool } from "../lib/db.js"
-import { ListObjectsV2Command, ListBucketsCommand, GetBucketPolicyCommand } from "@aws-sdk/client-s3"
+import { HeadBucketCommand, ListObjectsV2Command, ListBucketsCommand, GetBucketPolicyCommand } from "@aws-sdk/client-s3"
 import { s3, BUCKET_NAME } from "../lib/s3.js"
+import { checkDatabaseConnection } from "../lib/db.js"
+import { checkRedisConnection } from "../lib/redis.js"
 
 export async function miscRoutes(app: FastifyInstance) {
-  app.get("/api/health", async () => ({ ok: true }))
+  app.get("/api/health", async () => ({
+    ok: true,
+    service: "api",
+    uptime: process.uptime(),
+    ts: new Date().toISOString(),
+  }))
+
+  app.get("/api/ready", async (_req, reply) => {
+    const checks = {
+      database: false,
+      redis: false,
+      storage: false,
+      realtime: false,
+    }
+
+    try {
+      await checkDatabaseConnection()
+      checks.database = true
+    } catch (e) {
+      app.log.error({ err: e }, "Readiness check failed for database")
+    }
+
+    try {
+      await checkRedisConnection()
+      checks.redis = true
+    } catch (e) {
+      app.log.error({ err: e }, "Readiness check failed for redis")
+    }
+
+    try {
+      await s3.send(new HeadBucketCommand({ Bucket: BUCKET_NAME }))
+      checks.storage = true
+    } catch (e) {
+      app.log.error({ err: e }, "Readiness check failed for storage")
+    }
+
+    try {
+      const realtimeBase = process.env.REALTIME_BASE_HTTP || "http://localhost:4001"
+      const res = await fetch(`${realtimeBase}/health`)
+      checks.realtime = res.ok
+    } catch (e) {
+      app.log.error({ err: e }, "Readiness check failed for realtime")
+    }
+
+    const ok = Object.values(checks).every(Boolean)
+    if (!ok) reply.status(503)
+    return { ok, checks, ts: new Date().toISOString() }
+  })
+
+  const debugEnabled = process.env.ENABLE_DEBUG_ROUTES === "true"
+  if (!debugEnabled) return
 
   app.get("/api/debug/s3", async () => {
     try {

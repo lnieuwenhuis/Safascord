@@ -19,6 +19,8 @@ export async function runMigrations() {
     // Friend System & User Discriminator
     await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS discriminator VARCHAR(4);`)
     await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS allow_dms_from_strangers BOOLEAN DEFAULT TRUE;`)
+    await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS shoo_sub TEXT;`)
+    await pool.query(`CREATE UNIQUE INDEX IF NOT EXISTS idx_users_shoo_sub_unique ON users(shoo_sub) WHERE shoo_sub IS NOT NULL;`)
     
     // Multiple Roles System
     await pool.query(`
