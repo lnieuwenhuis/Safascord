@@ -10,6 +10,7 @@ import type { Server, ChannelSection } from "@/types"
 import ChannelModal from "./ChannelModal"
 import { useNotifications } from "../NotificationProvider"
 import { useAuth } from "@/hooks/useAuth"
+import { createPortal } from "react-dom"
 
 export default function ChannelSidebar({ guildId, activeChannelId }: { guildId?: string, activeChannelId?: string }) {
   const navigate = useNavigate()
@@ -74,6 +75,18 @@ export default function ChannelSidebar({ guildId, activeChannelId }: { guildId?:
       return notifications.filter(n => !n.read && n.channelId === channelId).length
   }
 
+  const openMenu = (channel: string, x: number, y: number) => {
+    const menuWidth = 176
+    const menuHeight = channel === "__header__" ? 148 : 96
+    const maxX = Math.max(8, window.innerWidth - menuWidth - 8)
+    const maxY = Math.max(8, window.innerHeight - menuHeight - 8)
+    setMenu({
+      channel,
+      x: Math.min(Math.max(8, x), maxX),
+      y: Math.min(Math.max(8, y), maxY),
+    })
+  }
+
   return (
     <aside className="flex h-dvh w-full flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground backdrop-blur-sm">
       {server?.bannerUrl && (
@@ -87,8 +100,9 @@ export default function ChannelSidebar({ guildId, activeChannelId }: { guildId?:
           <div className="truncate text-sm font-semibold">{server?.name}</div>
           <div className="relative">
             <button className="btn btn-ghost btn-xs btn-square" onClick={(e) => {
-              e.preventDefault();
-              setMenu({ channel: "__header__", x: e.clientX, y: e.clientY })
+              e.preventDefault()
+              const rect = e.currentTarget.getBoundingClientRect()
+              openMenu("__header__", rect.right - 176, rect.bottom + 8)
             }}>
               <Plus className="h-4 w-4" />
             </button>
@@ -124,8 +138,8 @@ export default function ChannelSidebar({ guildId, activeChannelId }: { guildId?:
                       }
                     }}
                     onContextMenu={(e) => { 
-                      e.preventDefault(); 
-                      setMenu({ channel: c.name, x: e.clientX, y: e.clientY }); 
+                      e.preventDefault()
+                      openMenu(c.name, e.clientX, e.clientY)
                       setEditChannel(c.name) 
                     }}
                   >
@@ -146,51 +160,59 @@ export default function ChannelSidebar({ guildId, activeChannelId }: { guildId?:
       <div className="mt-auto">
         <UserCard />
       </div>
-      {menu && (
-        <div className="menu fixed z-[120] w-44 rounded-box border border-base-300 bg-base-100 p-1 shadow-xl" style={{ left: menu.x, top: menu.y }} onMouseLeave={() => setMenu(null)}>
-          {menu.channel === "__header__" ? (
-            <>
-              <button className="btn btn-ghost btn-sm justify-start" onClick={() => { 
-                 setCreateChannelOpen(true); 
-                 setMenu(null)
-              }}>Create Channel</button>
-              <button className="btn btn-ghost btn-sm justify-start" onClick={() => {
-                 setCreateCategoryOpen(true);
-                 setNewCategoryName("");
-                 setMenu(null)
-              }}>Create Category</button>
-              <button className="btn btn-ghost btn-sm justify-start" onClick={async () => {
-                setMenu(null)
-                if (!guildId || !authToken) return
-                try {
-                  const r = await api.createInvite(authToken, guildId)
-                  if (r.code) {
-                    const link = `${window.location.origin}/invite/${r.code}`
-                    await navigator.clipboard.writeText(link)
-                    alert(`Invite link copied to clipboard: ${link}`)
-                  } else {
+      {menu && createPortal(
+        <>
+          <div className="fixed inset-0 z-[200]" onClick={() => setMenu(null)} />
+          <div
+            className="menu fixed z-[210] w-44 rounded-box border border-base-300 bg-base-100 p-1 shadow-xl"
+            style={{ left: menu.x, top: menu.y }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {menu.channel === "__header__" ? (
+              <>
+                <button className="btn btn-ghost btn-sm justify-start" onClick={() => {
+                   setCreateChannelOpen(true)
+                   setMenu(null)
+                }}>Create Channel</button>
+                <button className="btn btn-ghost btn-sm justify-start" onClick={() => {
+                   setCreateCategoryOpen(true)
+                   setNewCategoryName("")
+                   setMenu(null)
+                }}>Create Category</button>
+                <button className="btn btn-ghost btn-sm justify-start" onClick={async () => {
+                  setMenu(null)
+                  if (!guildId || !authToken) return
+                  try {
+                    const r = await api.createInvite(authToken, guildId)
+                    if (r.code) {
+                      const link = `${window.location.origin}/invite/${r.code}`
+                      await navigator.clipboard.writeText(link)
+                      alert(`Invite link copied to clipboard: ${link}`)
+                    } else {
+                      alert("Failed to create invite link")
+                    }
+                  } catch (e) {
+                    console.error("Invite creation error:", e)
                     alert("Failed to create invite link")
                   }
-                } catch (e) {
-                  console.error("Invite creation error:", e)
-                  alert("Failed to create invite link")
-                }
-              }}>Invite People</button>
-            </>
-          ) : (
-            <>
-              <button className="btn btn-ghost btn-sm justify-start" onClick={() => { 
-                 setMenu(null)
-                 handleEditChannel(menu.channel)
-              }}>Edit Channel</button>
-              <button className="btn btn-ghost btn-sm justify-start text-error" onClick={() => { 
-                 setMenu(null)
-                 setConfirmOpen(true); 
-                 setConfirmAction("delete") 
-              }}>Delete channel</button>
-            </>
-          )}
-        </div>
+                }}>Invite People</button>
+              </>
+            ) : (
+              <>
+                <button className="btn btn-ghost btn-sm justify-start" onClick={() => {
+                   setMenu(null)
+                   handleEditChannel(menu.channel)
+                }}>Edit Channel</button>
+                <button className="btn btn-ghost btn-sm justify-start text-error" onClick={() => {
+                   setMenu(null)
+                   setConfirmOpen(true)
+                   setConfirmAction("delete")
+                }}>Delete channel</button>
+              </>
+            )}
+          </div>
+        </>,
+        document.body
       )}
       
       {/* Create/Edit Channel Modal */}
@@ -203,14 +225,14 @@ export default function ChannelSidebar({ guildId, activeChannelId }: { guildId?:
       />
 
       {/* Create Category Modal */}
-      {createCategoryOpen && (
-        <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/60 backdrop-blur-sm supports-backdrop-filter:bg-black/50 p-4" onClick={() => setCreateCategoryOpen(false)}>
+      {createCategoryOpen && createPortal(
+        <div className="fixed inset-0 z-[220] flex items-center justify-center bg-black/60 backdrop-blur-sm supports-backdrop-filter:bg-black/50 p-4" onClick={() => setCreateCategoryOpen(false)}>
           <div className="w-[420px] rounded-2xl border border-base-300 bg-base-100 p-5 text-base-content shadow-2xl" onClick={(e) => e.stopPropagation()}>
             <div className="text-lg font-semibold">Create Category</div>
             <div className="mt-2"><Input placeholder="Category Name" value={newCategoryName} onChange={(e) => setNewCategoryName(e.target.value)} /></div>
             <div className="mt-6 flex items-center justify-end gap-2">
               <button className="btn btn-ghost btn-sm" onClick={() => setCreateCategoryOpen(false)}>Cancel</button>
-              <button className="btn btn-primary btn-sm" onClick={async () => { 
+              <button className="btn btn-primary btn-sm" onClick={async () => {
                  if (!guildId || !newCategoryName) return
                  await api.createCategory(authToken, guildId, newCategoryName)
                  loadChannels()
@@ -218,7 +240,8 @@ export default function ChannelSidebar({ guildId, activeChannelId }: { guildId?:
               }}>Create</button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       <ConfirmDialog
