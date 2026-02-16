@@ -38,9 +38,10 @@ Minimum required values:
   - `DATABASE_URL`
   - `REDIS_URL`
   - `JWT_SECRET`
-  - `SHOO_BASE_URL`
-  - `SHOO_ISSUER`
+  - `SHOO_BASE_URL=https://shoo.dev`
+  - `SHOO_ISSUER=https://shoo.dev`
   - `SHOO_ALLOWED_ORIGINS`
+  - Optional: `SHOO_CLIENT_ID=origin:https://cord.safasfly.dev`
   - `REALTIME_BASE_HTTP` (private Railway URL for realtime)
   - `REALTIME_BASE_WS=wss://ws.cord.safasfly.dev/ws`
   - `CORS_ORIGINS=https://cord.safasfly.dev`

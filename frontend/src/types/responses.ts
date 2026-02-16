@@ -8,6 +8,7 @@ export interface AuthResponse {
   token?: string
   user?: User
   error?: string
+  reason?: string
   isNew?: boolean
 }
 

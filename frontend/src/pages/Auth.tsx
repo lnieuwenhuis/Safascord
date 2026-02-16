@@ -59,7 +59,7 @@ export default function Auth() {
       try {
         const result = await api.authWithShoo(identityToken)
         if (result.error || !result.token || !result.user) {
-          setError(result.error || "Authentication failed")
+          setError(result.reason || result.error || "Authentication failed")
           setIsLoading(false)
           processedTokenRef.current = null
           return

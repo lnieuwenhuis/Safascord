@@ -25,6 +25,8 @@ Because realtime fanout is Redis-backed, websocket events continue to work acros
 - Backend:
   - `PG_POOL_MAX=20` (adjust based on DB limits)
   - `CORS_ORIGINS=https://cord.safasfly.dev`
+  - `SHOO_BASE_URL=https://shoo.dev`
+  - `SHOO_ISSUER=https://shoo.dev`
   - `ENABLE_DEBUG_ROUTES=false`
 - Realtime:
   - `WS_ALLOWED_ORIGINS=https://cord.safasfly.dev`
