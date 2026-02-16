@@ -5,6 +5,7 @@ import { useNavigate } from "react-router-dom"
 import { Bell, Check, Trash2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
+import { createPortal } from "react-dom"
 
 function formatTimeAgo(date: Date) {
   const seconds = Math.floor((new Date().getTime() - date.getTime()) / 1000)
@@ -26,21 +27,40 @@ export default function Inbox() {
   const { user } = useAuth()
   const navigate = useNavigate()
   const [open, setOpen] = useState(false)
-  const ref = useRef<HTMLDivElement>(null)
+  const triggerRef = useRef<HTMLDivElement>(null)
+  const [anchorRect, setAnchorRect] = useState<DOMRect | null>(null)
 
   useEffect(() => {
-    function handleClickOutside(event: MouseEvent) {
-      if (ref.current && !ref.current.contains(event.target as Node)) {
-        setOpen(false)
+    if (!open) return
+    const updateAnchor = () => {
+      if (triggerRef.current) {
+        setAnchorRect(triggerRef.current.getBoundingClientRect())
       }
     }
-    document.addEventListener("mousedown", handleClickOutside)
-    return () => document.removeEventListener("mousedown", handleClickOutside)
-  }, [ref])
+    updateAnchor()
+    window.addEventListener("resize", updateAnchor)
+    window.addEventListener("scroll", updateAnchor, true)
+    return () => {
+      window.removeEventListener("resize", updateAnchor)
+      window.removeEventListener("scroll", updateAnchor, true)
+    }
+  }, [open])
+
+  const panelLeft = (() => {
+    if (typeof window === "undefined" || !anchorRect) return 88
+    return Math.min(anchorRect.right + 12, window.innerWidth - 336)
+  })()
+
+  const panelTop = (() => {
+    if (typeof window === "undefined" || !anchorRect) return 20
+    const panelHeight = 500
+    return Math.min(Math.max(12, anchorRect.bottom - panelHeight), window.innerHeight - panelHeight - 12)
+  })()
 
   return (
-    <div className="relative" ref={ref}>
+    <div className="relative">
       <div 
+        ref={triggerRef}
         className="relative flex items-center justify-center w-12 h-12 mb-2 cursor-pointer group"
         onClick={() => setOpen(!open)}
       >
@@ -58,87 +78,68 @@ export default function Inbox() {
          )}
       </div>
 
-      {open && (
-        <div className="absolute bottom-0 left-14 w-80 bg-card border border-border shadow-xl rounded-md overflow-hidden z-50 flex flex-col max-h-[500px]">
-          <div className="flex items-center justify-between p-4 border-b border-border shrink-0 bg-card">
-            <h4 className="font-semibold">Inbox</h4>
-            <div className="flex gap-1">
-               <Button variant="ghost" size="icon" className="h-8 w-8" onClick={markAllRead} title="Mark all read">
-                 <Check className="w-4 h-4" />
-               </Button>
-            </div>
-          </div>
-          <div className="overflow-y-auto flex-1">
-            {notifications.length === 0 ? (
-              <div className="flex flex-col items-center justify-center h-full p-8 text-center text-muted-foreground min-h-[200px]">
-                <Bell className="w-12 h-12 mb-2 opacity-20" />
-                <p>No notifications</p>
+      {open && createPortal(
+        <>
+          <div className="fixed inset-0 z-[230]" onClick={() => setOpen(false)} />
+          <div
+            className="fixed z-[240] flex max-h-[500px] w-80 flex-col overflow-hidden rounded-md border border-border bg-card shadow-xl"
+            style={{ left: `${panelLeft}px`, top: `${panelTop}px` }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between border-b border-border bg-card p-4 shrink-0">
+              <h4 className="font-semibold">Inbox</h4>
+              <div className="flex gap-1">
+                 <Button variant="ghost" size="icon" className="h-8 w-8" onClick={markAllRead} title="Mark all read">
+                   <Check className="w-4 h-4" />
+                 </Button>
               </div>
-            ) : (
-              <div className="divide-y divide-border">
-                {notifications.map(n => (
-                  <div 
-                    key={n.id} 
-                    className={cn("p-4 transition-colors hover:bg-muted/50 cursor-pointer", !n.read && "bg-primary/5")}
-                    onClick={async () => {
-                      // Navigate logic
-                      // If it has a channelId, we can try to navigate there.
-                      // Since we store 'channelId' in notifications (added in backend), we can use it.
-                      // However, channelId might be a UUID.
-                      // If it's a DM, source_type='dm'.
-                      // If it's a mention in a server, source_type='message'.
-                      
-                      // We need to fetch where this message is if we don't have full context.
-                      // But wait, for now let's just mark as read.
-                      // Ideally we navigate.
-                      
-                      if (n.channelId) {
-                         // We need to know if it is a DM or Guild channel to form the URL.
-                         // If source_type is 'dm', it's /channels/@me/:channelId
-                         // If source_type is 'message' (mention in server), it's /server/:serverId/channel/:channelId
-                         // BUT we don't store serverId in notification table yet (only channel_id).
-                         // We can try to find the channel in the user's list or fetch it.
-                         // For simplicity, let's just mark read for now.
-                         // Actually, let's try to infer.
-                         if (n.sourceType === 'dm') {
-                            navigate(`/channels/@me/${n.channelId}`)
-                         } else {
-                            // We need server ID.
-                            // We can fetch message details or channel details.
-                            // Let's assume we can't navigate perfectly to server channels without server ID yet.
-                            // BUT, we can look it up if we had a helper.
-                            // For now, mark read is the key action.
-                         }
-                      }
-                      
-                      markRead(n.id)
-                      setOpen(false)
-                    }}
-                  >
-                    <div className="flex items-start gap-3">
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm text-foreground mb-1">{n.content}</p>
-                        <p className="text-xs text-muted-foreground">
-                          {formatTimeAgo(new Date(n.ts))}
-                        </p>
-                      </div>
-                      <div className="flex flex-col gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                        {!n.read && (
-                          <Button variant="ghost" size="icon" className="h-6 w-6" onClick={(e) => { e.stopPropagation(); markRead(n.id) }}>
-                            <div className="w-2 h-2 bg-primary rounded-full" />
+            </div>
+            <div className="overflow-y-auto flex-1">
+              {notifications.length === 0 ? (
+                <div className="flex h-full min-h-[200px] flex-col items-center justify-center p-8 text-center text-muted-foreground">
+                  <Bell className="mb-2 h-12 w-12 opacity-20" />
+                  <p>No notifications</p>
+                </div>
+              ) : (
+                <div className="divide-y divide-border">
+                  {notifications.map(n => (
+                    <div
+                      key={n.id}
+                      className={cn("p-4 transition-colors hover:bg-muted/50 cursor-pointer", !n.read && "bg-primary/5")}
+                      onClick={async () => {
+                        if (n.channelId && n.sourceType === "dm") {
+                          navigate(`/channels/@me/${n.channelId}`)
+                        }
+                        markRead(n.id)
+                        setOpen(false)
+                      }}
+                    >
+                      <div className="flex items-start gap-3">
+                        <div className="flex-1 min-w-0">
+                          <p className="mb-1 text-sm text-foreground">{n.content}</p>
+                          <p className="text-xs text-muted-foreground">
+                            {formatTimeAgo(new Date(n.ts))}
+                          </p>
+                        </div>
+                        <div className="flex flex-col gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                          {!n.read && (
+                            <Button variant="ghost" size="icon" className="h-6 w-6" onClick={(e) => { e.stopPropagation(); markRead(n.id) }}>
+                              <div className="h-2 w-2 rounded-full bg-primary" />
+                            </Button>
+                          )}
+                          <Button variant="ghost" size="icon" className="h-6 w-6 text-destructive" onClick={(e) => { e.stopPropagation(); deleteNotification(n.id) }}>
+                            <Trash2 className="w-3 h-3" />
                           </Button>
-                        )}
-                        <Button variant="ghost" size="icon" className="h-6 w-6 text-destructive" onClick={(e) => { e.stopPropagation(); deleteNotification(n.id) }}>
-                          <Trash2 className="w-3 h-3" />
-                        </Button>
+                        </div>
                       </div>
                     </div>
-                  </div>
-                ))}
-              </div>
-            )}
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
-        </div>
+        </>,
+        document.body
       )}
     </div>
   )

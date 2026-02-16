@@ -1,12 +1,13 @@
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Headphones, Mic, Cog, Pencil, Circle, MinusCircle, Moon, Disc, ChevronDown, ChevronUp, Check, Image as ImageIcon, Loader2, UserPlus, MessageSquare, X } from "lucide-react"
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef, type CSSProperties } from "react"
 import UserSettings from "./UserSettings"
 import { useAuth } from "@/hooks/useAuth"
 import { cn } from "@/lib/utils"
 import { api, getFullUrl } from "@/lib/api"
 import type { UserStatus, Role } from "@/types"
+import { createPortal } from "react-dom"
 
 const statusConfig = {
   online: { label: "Online", color: "bg-green-500", icon: Circle, description: "Online" },
@@ -26,6 +27,7 @@ interface ProfileCardProps {
   isPremium: boolean
   roles?: Role[]
   className?: string
+  style?: CSSProperties
   discriminator?: string
   friendshipStatus?: 'none' | 'friends' | 'outgoing' | 'incoming' | 'blocked'
   allowDmsFromStrangers?: boolean
@@ -49,6 +51,7 @@ export function ProfileCard({
   isPremium,
   roles,
   className,
+  style,
   discriminator,
   friendshipStatus,
   allowDmsFromStrangers,
@@ -74,6 +77,7 @@ export function ProfileCard({
         "w-[300px] overflow-hidden rounded-xl border border-border bg-popover shadow-2xl",
         className
       )}
+      style={style}
     >
       {/* Banner */}
       <div 
@@ -234,8 +238,10 @@ export default function UserCard() {
   const [deaf, setDeaf] = useState(false)
   const [open, setOpen] = useState(false) // Settings modal
   const [showProfile, setShowProfile] = useState(false) // Profile popup
+  const [profileAnchorRect, setProfileAnchorRect] = useState<DOMRect | null>(null)
   const [editProfileOpen, setEditProfileOpen] = useState(false) // Edit Profile Modal
   const [isSaving, setIsSaving] = useState(false)
+  const triggerRef = useRef<HTMLDivElement | null>(null)
 
   const { user, updateUser, token } = useAuth()
   
@@ -274,10 +280,27 @@ export default function UserCard() {
       setBannerColor(user.bannerColor || "#e0ac00")
       setBannerImage(getFullUrl(user.bannerUrl))
       setAvatarImage(getFullUrl(user.avatarUrl))
+      setTempCustomBackground(getFullUrl(user.customBackgroundUrl))
+      setTempBackgroundOpacity(user.customBackgroundOpacity ?? 0.85)
       if (user.status) setStatus(user.status as UserStatus)
     }
   }, [user])
 
+  useEffect(() => {
+    if (!showProfile) return
+    const updateAnchor = () => {
+      if (triggerRef.current) {
+        setProfileAnchorRect(triggerRef.current.getBoundingClientRect())
+      }
+    }
+    updateAnchor()
+    window.addEventListener("resize", updateAnchor)
+    window.addEventListener("scroll", updateAnchor, true)
+    return () => {
+      window.removeEventListener("resize", updateAnchor)
+      window.removeEventListener("scroll", updateAnchor, true)
+    }
+  }, [showProfile])
 
 
   const handleEditOpen = () => {
@@ -286,8 +309,11 @@ export default function UserCard() {
     setTempBannerColor(bannerColor)
     setTempBannerImage(bannerImage)
     setTempAvatarImage(avatarImage)
+    setTempCustomBackground(getFullUrl(user?.customBackgroundUrl))
+    setTempBackgroundOpacity(user?.customBackgroundOpacity ?? 0.85)
     setBannerFile(null)
     setAvatarFile(null)
+    setCustomBackgroundFile(null)
     setEditProfileOpen(true)
     setShowProfile(false) // Close the small popup
   }
@@ -394,33 +420,34 @@ export default function UserCard() {
     }
   }
 
+  const toggleProfilePopover = () => {
+    if (!showProfile && triggerRef.current) {
+      setProfileAnchorRect(triggerRef.current.getBoundingClientRect())
+    }
+    setShowProfile((prev) => !prev)
+  }
+
+  const profileLeft = (() => {
+    if (typeof window === "undefined" || !profileAnchorRect) return 72
+    return Math.min(Math.max(72, profileAnchorRect.left), window.innerWidth - 316)
+  })()
+
+  const profileTop = (() => {
+    if (typeof window === "undefined" || !profileAnchorRect) return 96
+    const cardHeight = 420
+    const preferredTop = profileAnchorRect.top - cardHeight - 12
+    if (preferredTop >= 16) return preferredTop
+    return Math.min(window.innerHeight - cardHeight - 16, profileAnchorRect.bottom + 8)
+  })()
+
   return (
     <>
       <div className="relative flex h-16 items-center justify-between border-t border-sidebar-border bg-sidebar px-2">
-        {/* Profile Popup */}
-        {showProfile && (
-          <>
-            <div className="fixed inset-0 z-40" onClick={() => setShowProfile(false)} />
-            <ProfileCard
-              className="fixed bottom-[70px] left-[72px] z-50 animate-in fade-in zoom-in-95 duration-200"
-              displayName={displayName}
-              username={username}
-              bio={bio}
-              avatarUrl={avatarImage}
-              bannerUrl={bannerImage}
-              bannerColor={bannerColor}
-              status={status}
-              isPremium={isPremium}
-              onEditProfile={handleEditOpen}
-              onStatusChange={handleStatusChange}
-            />
-          </>
-        )}
-
         {/* User Card Trigger */}
         <div 
+          ref={triggerRef}
           className="flex cursor-pointer items-center gap-2 rounded-md py-1 px-0.5 hover:bg-sidebar-accent/50"
-          onClick={() => setShowProfile(!showProfile)}
+          onClick={toggleProfilePopover}
         >
           <div className="relative">
              <div className="h-8 w-8 overflow-hidden rounded-full bg-primary/20">
@@ -472,11 +499,32 @@ export default function UserCard() {
         </div>
       </div>
 
+      {showProfile && createPortal(
+        <>
+          <div className="fixed inset-0 z-[180]" onClick={() => setShowProfile(false)} />
+          <ProfileCard
+            className="fixed z-[190] animate-in fade-in zoom-in-95 duration-200"
+            style={{ left: `${profileLeft}px`, top: `${profileTop}px` }}
+            displayName={displayName}
+            username={username}
+            bio={bio}
+            avatarUrl={avatarImage}
+            bannerUrl={bannerImage}
+            bannerColor={bannerColor}
+            status={status}
+            isPremium={isPremium}
+            onEditProfile={handleEditOpen}
+            onStatusChange={handleStatusChange}
+          />
+        </>,
+        document.body
+      )}
+
       <UserSettings open={open} onClose={() => setOpen(false)} />
 
       {/* Edit Profile Modal */}
-      {editProfileOpen && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+      {editProfileOpen && createPortal(
+        <div className="fixed inset-0 z-[220] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in duration-200">
           <div className="flex h-[85vh] w-[800px] overflow-hidden rounded-lg bg-card shadow-2xl animate-in zoom-in-95 duration-200 flex-col md:flex-row">
             
             {/* Sidebar / Form */}
@@ -615,7 +663,8 @@ export default function UserCard() {
                </div>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </>
   )

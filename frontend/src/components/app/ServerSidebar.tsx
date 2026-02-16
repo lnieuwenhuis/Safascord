@@ -9,6 +9,7 @@ import EditServerModal from "./EditServerModal"
 import type { Server } from "@/types"
 import { cn } from "@/lib/utils"
 import { useAuth } from "@/hooks/useAuth"
+import { createPortal } from "react-dom"
 
 import Inbox from "./Inbox"
 
@@ -32,6 +33,18 @@ export default function ServerSidebar() {
       api.servers(authToken).then((r) => setServers(r.servers)).catch(() => setServers([]))
     }
   }, [authToken])
+
+  const openMenu = (id: string, x: number, y: number) => {
+    const menuWidth = 176
+    const menuHeight = 120
+    const maxX = Math.max(8, window.innerWidth - menuWidth - 8)
+    const maxY = Math.max(8, window.innerHeight - menuHeight - 8)
+    setMenu({
+      id,
+      x: Math.min(Math.max(8, x), maxX),
+      y: Math.min(Math.max(8, y), maxY),
+    })
+  }
 
   const activeServer = editId ? servers.find(s => s.id === editId) || null : null
   return (
@@ -60,7 +73,7 @@ export default function ServerSidebar() {
           }}
           onContextMenu={(e) => {
             e.preventDefault()
-            setMenu({ id: s.id, x: e.clientX, y: e.clientY })
+            openMenu(s.id, e.clientX, e.clientY)
             setEditId(s.id)
           }}
         >
@@ -71,23 +84,31 @@ export default function ServerSidebar() {
           )}
         </button>
       ))}
-      {menu && (
-        <div className="menu fixed z-[120] w-44 rounded-box border border-base-300 bg-base-100 p-1 shadow-xl" style={{ left: menu.x, top: menu.y }} onMouseLeave={() => setMenu(null)}>
-          {menu.id === "__home__" ? (
-             <button className="btn btn-ghost btn-sm justify-start" onClick={() => { setCreateOpen(true); setMenu(null) }}>Create Server</button>
-          ) : (
-            <>
-              {servers.find(s => s.id === menu.id)?.ownerId === userId ? (
-                <>
-                  <button className="btn btn-ghost btn-sm justify-start" onClick={() => { setEditOpen(true); setEditId(menu.id) }}>Edit Server</button>
-                  <button className="btn btn-ghost btn-sm justify-start text-error" onClick={() => { setConfirmOpen(true); setEditId(menu.id) }}>Delete Server</button>
-                </>
-              ) : (
-                <button className="btn btn-ghost btn-sm justify-start text-error" onClick={() => { setLeaveOpen(true); setEditId(menu.id) }}>Leave Server</button>
-              )}
-            </>
-          )}
-        </div>
+      {menu && createPortal(
+        <>
+          <div className="fixed inset-0 z-[200]" onClick={() => setMenu(null)} />
+          <div
+            className="menu fixed z-[210] w-44 rounded-box border border-base-300 bg-base-100 p-1 shadow-xl"
+            style={{ left: menu.x, top: menu.y }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {menu.id === "__home__" ? (
+               <button className="btn btn-ghost btn-sm justify-start" onClick={() => { setCreateOpen(true); setMenu(null) }}>Create Server</button>
+            ) : (
+              <>
+                {servers.find(s => s.id === menu.id)?.ownerId === userId ? (
+                  <>
+                    <button className="btn btn-ghost btn-sm justify-start" onClick={() => { setMenu(null); setEditOpen(true); setEditId(menu.id) }}>Edit Server</button>
+                    <button className="btn btn-ghost btn-sm justify-start text-error" onClick={() => { setMenu(null); setConfirmOpen(true); setEditId(menu.id) }}>Delete Server</button>
+                  </>
+                ) : (
+                  <button className="btn btn-ghost btn-sm justify-start text-error" onClick={() => { setMenu(null); setLeaveOpen(true); setEditId(menu.id) }}>Leave Server</button>
+                )}
+              </>
+            )}
+          </div>
+        </>,
+        document.body
       )}
       <ConfirmDialog
         open={confirmOpen}

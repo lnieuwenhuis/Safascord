@@ -70,10 +70,10 @@ export default function AppShell({
         )}
       >
         {/* Desktop Sidebars */}
-        <div className="hidden h-full overflow-hidden md:block">
+        <div className="hidden h-full overflow-visible md:block">
           <ServerSidebar />
         </div>
-        <div className="hidden h-full overflow-hidden md:block">
+        <div className="hidden h-full overflow-visible md:block">
           <Sidebar {...sidebarProps} />
         </div>
 
