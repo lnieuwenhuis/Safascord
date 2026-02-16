@@ -53,11 +53,62 @@ async function request<T>(path: string, opts?: RequestInit): Promise<T> {
       : String(payload || res.status)
     throw new Error(err)
   }
+  const method = (opts?.method || "GET").toUpperCase()
+  if (method !== "GET") {
+    getResponseCache.clear()
+  }
   return payload as T
 }
 
+const inflightGetRequests = new Map<string, Promise<unknown>>()
+const getResponseCache = new Map<string, { expiresAt: number; value: unknown }>()
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+function getCacheTtlMs(path: string): number {
+  if (path === "/servers") return 3000
+  return 0
+}
+
+function getAuthorizationHeader(headers?: HeadersInit): string {
+  if (!headers) return ""
+  if (headers instanceof Headers) return headers.get("Authorization") || ""
+  if (Array.isArray(headers)) {
+    const found = headers.find(([k]) => k.toLowerCase() === "authorization")
+    return found?.[1] || ""
+  }
+  const auth = (headers as Record<string, string>)["Authorization"] || (headers as Record<string, string>)["authorization"]
+  return auth || ""
+}
+
 async function get<T>(path: string, opts?: RequestInit): Promise<T> {
-  return request<T>(path, opts)
+  const method = (opts?.method || "GET").toUpperCase()
+  if (method !== "GET") return request<T>(path, opts)
+
+  const auth = getAuthorizationHeader(opts?.headers)
+  const key = `${path}::${auth}`
+  const cacheTtlMs = getCacheTtlMs(path)
+  if (cacheTtlMs > 0) {
+    const cached = getResponseCache.get(key)
+    if (cached && cached.expiresAt > Date.now()) {
+      return cached.value as T
+    }
+  }
+
+  const existing = inflightGetRequests.get(key) as Promise<T> | undefined
+  if (existing) return existing
+
+  const pending = request<T>(path, opts)
+    .then((data) => {
+      if (cacheTtlMs > 0) {
+        getResponseCache.set(key, { value: data, expiresAt: Date.now() + cacheTtlMs })
+      }
+      return data
+    })
+    .finally(() => {
+      inflightGetRequests.delete(key)
+    })
+  inflightGetRequests.set(key, pending)
+  return pending
 }
 
 export const api = {
@@ -65,7 +116,11 @@ export const api = {
   channels: (serverId?: string, token?: string) => get<ChannelsResponse>(`/channels${serverId ? `?serverId=${serverId}` : ""}`, token ? { headers: { Authorization: `Bearer ${token}` } } : undefined),
   users: (serverId?: string, channelId?: string) => {
     const token = localStorage.getItem("token") || ""
-    if (serverId) return api.getServerMembers(token, serverId, channelId).then(res => {
+    if (!token) return Promise.resolve({ groups: [] })
+    if (serverId) return Promise.all([
+      api.getServerMembers(token, serverId, channelId),
+      api.getRoles(token, serverId),
+    ]).then(([res, rolesRes]) => {
        // Group by roles
        // This logic should ideally be in the backend or a helper, but let's do it here to match existing interface
        // We need role names. The members endpoint returns roles as IDs.
@@ -78,8 +133,6 @@ export const api = {
        
        // It seems `api.users` is a custom helper we added.
        // Let's implement it properly.
-       
-       return api.getRoles(token, serverId).then(rolesRes => {
              const roles = (rolesRes && rolesRes.roles) ? rolesRes.roles.sort((a, b) => a.position - b.position) : []
              const members = (res && res.members) ? res.members : []
              
@@ -177,7 +230,6 @@ export const api = {
            // We already filtered users in the backend, so all users here have access.
            // Just filter out empty role groups.
            return { groups: result.filter(g => g.users.length > 0) }
-       })
     })
     return Promise.resolve({ groups: [] })
   },
@@ -251,7 +303,7 @@ export const api = {
     })
   },
   getRoles: async (token: string, serverId: string) => {
-    return request<RolesResponse>(`/servers/${serverId}/roles`, {
+    return get<RolesResponse>(`/servers/${serverId}/roles`, {
       headers: { Authorization: `Bearer ${token}` }
     })
   },
@@ -284,13 +336,14 @@ export const api = {
     })
   },
   getMember: async (token: string, serverId: string, userId: string) => {
-    return request<{ member: { roleId: string; roleName: string; roleColor: string; canManageRoles: boolean; roles?: { id: string; name: string; color: string; position: number }[] } | null }>(`/servers/${serverId}/members/${userId}`, {
+    return get<{ member: { roleId: string; roleName: string; roleColor: string; canManageRoles: boolean; roles?: { id: string; name: string; color: string; position: number }[] } | null }>(`/servers/${serverId}/members/${userId}`, {
       headers: { Authorization: `Bearer ${token}` }
     })
   },
   getServerMembers: async (token: string, serverId: string, channelId?: string) => {
-    const url = channelId ? `/servers/${serverId}/members?channelId=${channelId}` : `/servers/${serverId}/members`
-    return request<{ members: { id: string; username: string; discriminator: string; displayName: string; avatarUrl: string; roles: string[]; muted: boolean }[] }>(url, {
+    const safeChannelId = channelId && UUID_RE.test(channelId) ? channelId : undefined
+    const url = safeChannelId ? `/servers/${serverId}/members?channelId=${safeChannelId}` : `/servers/${serverId}/members`
+    return get<{ members: { id: string; username: string; discriminator: string; displayName: string; avatarUrl: string; roles: string[]; muted: boolean }[] }>(url, {
       headers: { Authorization: `Bearer ${token}` }
     })
   },

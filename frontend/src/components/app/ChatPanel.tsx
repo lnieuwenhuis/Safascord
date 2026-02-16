@@ -76,24 +76,29 @@ export default function ChatPanel({ variant, channelName, channelId, guildName, 
   const [mentionQuery, setMentionQuery] = useState("")
   const [members, setMembers] = useState<{id: string, username: string, displayName: string, avatarUrl: string}[]>([])
   const [mentionIndex, setMentionIndex] = useState(0)
+  const [membersLoaded, setMembersLoaded] = useState(false)
+  const [membersLoading, setMembersLoading] = useState(false)
 
   useEffect(() => {
-    if (variant === "guild" && guildId && token) {
-      // For server channels, we want to list members who have access to THIS channel
-      // But wait, the sidebar user list is usually per-server.
-      // However, the user requested that people who don't have access shouldn't show up.
-      // The API we updated accepts channelId.
-      // We should pass the current channelId if available.
-      // In 'guild' variant, channelId is passed as prop (renamed to channelName in props but it's actually ID or Name? Let's check parent)
-      // In App.tsx: <GuildChannel /> passes params.
-      // GuildChannel passes channelId={channelId} to ChatPanel.
-      // ChatPanel props: channelId.
-      
-      api.getServerMembers(token, guildId, channelId).then(r => {
-        setMembers(r.members || [])
-      }).catch(() => setMembers([]))
+    setMembers([])
+    setMembersLoaded(false)
+    setMembersLoading(false)
+  }, [guildId, channelId, variant])
+
+  const loadMentionMembers = async () => {
+    if (variant !== "guild" || !guildId || !token) return
+    if (membersLoaded || membersLoading) return
+    setMembersLoading(true)
+    try {
+      const r = await api.getServerMembers(token, guildId, channelId)
+      setMembers(r.members || [])
+      setMembersLoaded(true)
+    } catch {
+      setMembers([])
+    } finally {
+      setMembersLoading(false)
     }
-  }, [guildId, variant, token, channelId])
+  }
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (showMentionMenu) {
@@ -131,6 +136,9 @@ export default function ChatPanel({ variant, channelName, channelId, guildName, 
       setMentionQuery(query)
       setShowMentionMenu(true)
       setMentionIndex(0)
+      if (!membersLoaded) {
+        void loadMentionMembers()
+      }
     } else {
       setShowMentionMenu(false)
     }
