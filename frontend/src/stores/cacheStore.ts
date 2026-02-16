@@ -17,6 +17,7 @@ type CacheState = {
   dms?: DM[]
   channelsByServer: Record<string, ChannelSection[]>
   messagesByChannel: Record<string, MessageCacheEntry>
+  myRoleColorByServer: Record<string, string | undefined>
   setOwner: (ownerId?: string) => void
   clearAll: () => void
   setServers: (servers: Server[]) => void
@@ -26,6 +27,7 @@ type CacheState = {
     channelId: string,
     payload: { messages: Message[]; hasMore: boolean; oldestTimestamp?: string; loaded?: boolean }
   ) => void
+  setMyRoleColorForServer: (serverId: string, color?: string) => void
 }
 
 function trimMessageCache(
@@ -49,6 +51,7 @@ const initialState = {
   dms: undefined as DM[] | undefined,
   channelsByServer: {} as Record<string, ChannelSection[]>,
   messagesByChannel: {} as Record<string, MessageCacheEntry>,
+  myRoleColorByServer: {} as Record<string, string | undefined>,
 }
 
 export const useAppCacheStore = create<CacheState>((set) => ({
@@ -82,4 +85,8 @@ export const useAppCacheStore = create<CacheState>((set) => ({
         messagesByChannel: trimMessageCache(nextMessagesByChannel, channelId),
       }
     }),
+  setMyRoleColorForServer: (serverId, color) =>
+    set((state) => ({
+      myRoleColorByServer: { ...state.myRoleColorByServer, [serverId]: color },
+    })),
 }))

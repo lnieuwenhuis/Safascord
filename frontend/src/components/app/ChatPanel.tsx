@@ -108,6 +108,8 @@ export default function ChatPanel({ variant, channelName, channelId, guildName, 
   const { markChannelRead } = useNotifications()
   const channelKey = channelId || channelName
   const setCachedChannelMessages = useAppCacheStore((state) => state.setChannelMessages)
+  const myRoleColor = useAppCacheStore((state) => (guildId ? state.myRoleColorByServer[guildId] : undefined))
+  const setMyRoleColorForServer = useAppCacheStore((state) => state.setMyRoleColorForServer)
   const [msgs, setMsgs] = useState<Message[]>([])
   const [text, setText] = useState("")
   const [typing, setTyping] = useState<Set<string>>(new Set())
@@ -137,6 +139,42 @@ export default function ChatPanel({ variant, channelName, channelId, guildName, 
 
   const { user } = useAuth()
   const token = typeof window !== "undefined" ? (localStorage.getItem("token") || "") : ""
+
+  useEffect(() => {
+    if (variant !== "guild" || !guildId || !token || !user?.id || myRoleColor) return
+    let cancelled = false
+
+    const loadMyRoleColor = async () => {
+      try {
+        const [rolesRes, membersRes] = await Promise.all([
+          api.getRoles(token, guildId),
+          api.getServerMembers(token, guildId),
+        ])
+        if (cancelled) return
+
+        const me = (membersRes.members || []).find((member) => member.id === user.id)
+        if (!me) return
+
+        const roleById = new Map((rolesRes.roles || []).map((role) => [role.id, role]))
+        let highest: { position: number; color?: string } | null = null
+        for (const roleId of me.roles || []) {
+          const role = roleById.get(roleId)
+          if (!role) continue
+          if (!highest || role.position > highest.position) {
+            highest = { position: role.position, color: role.color }
+          }
+        }
+        setMyRoleColorForServer(guildId, highest?.color)
+      } catch {
+        // No-op: role color fallback remains unset.
+      }
+    }
+
+    void loadMyRoleColor()
+    return () => {
+      cancelled = true
+    }
+  }, [guildId, myRoleColor, setMyRoleColorForServer, token, user?.id, variant])
 
   useEffect(() => {
     if (channelKey) {
@@ -536,7 +574,7 @@ export default function ChatPanel({ variant, channelName, channelId, guildName, 
                 text: d.message!.text,
                 attachmentUrl: d.message!.attachmentUrl,
                 ts: d.message!.ts || new Date().toISOString(),
-                roleColor: d.roleColor,
+                roleColor: d.roleColor || (variant === "guild" && d.userId === user?.id ? myRoleColor : undefined),
               }]
             })
             if (shouldAutoScroll) {
@@ -596,7 +634,7 @@ export default function ChatPanel({ variant, channelName, channelId, guildName, 
       try { cur.close() } catch (e) { console.error(e) }
       wsRef.current = null
     }
-  }, [channelKey, channelName, isNearBottom, scrollToBottom, user?.id])
+  }, [channelKey, channelName, isNearBottom, myRoleColor, scrollToBottom, user?.id, variant])
 
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
@@ -671,6 +709,7 @@ export default function ChatPanel({ variant, channelName, channelId, guildName, 
           text: t,
           attachmentUrl,
           ts: optimisticTs,
+          roleColor: variant === "guild" ? myRoleColor : undefined,
         }
 
         applyMessagesUpdate((prev) => [...prev, optimisticMessage])
@@ -694,12 +733,18 @@ export default function ChatPanel({ variant, channelName, channelId, guildName, 
           text: t,
           attachmentUrl: r.message.attachmentUrl,
           ts: r.message.ts,
-          roleColor: r.message.roleColor,
+          roleColor: r.message.roleColor || (variant === "guild" ? myRoleColor : undefined),
         }
 
         applyMessagesUpdate((prev) => {
           const withoutOptimistic = prev.filter((x) => x.id !== optimisticId)
-          if (withoutOptimistic.some((x) => x.id === confirmedMessage.id)) return withoutOptimistic
+          if (withoutOptimistic.some((x) => x.id === confirmedMessage.id)) {
+            return withoutOptimistic.map((x) =>
+              x.id === confirmedMessage.id
+                ? { ...x, roleColor: x.roleColor || confirmedMessage.roleColor }
+                : x,
+            )
+          }
           return [...withoutOptimistic, confirmedMessage]
         })
       } else {
