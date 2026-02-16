@@ -129,13 +129,13 @@ export default function ChannelModal({
 
   return createPortal(
     <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4" onClick={onClose}>
-      <div className="flex h-[500px] w-full max-w-md flex-col overflow-hidden rounded-lg bg-background shadow-2xl border border-border" onClick={e => e.stopPropagation()}>
-        <div className="flex items-center justify-between border-b border-border p-4">
+      <div className="flex h-[500px] w-full max-w-md flex-col overflow-hidden rounded-2xl bg-slate-950 shadow-2xl border border-cyan-300/20" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between border-b border-cyan-300/15 p-4">
            <h2 className="text-lg font-semibold">{initialData ? "Edit Channel" : "Create Channel"}</h2>
            <Button variant="ghost" size="icon" onClick={onClose}><X className="h-4 w-4" /></Button>
         </div>
 
-        <div className="flex border-b border-border px-4">
+        <div className="flex border-b border-cyan-300/15 px-4">
            <button 
              onClick={() => setActiveTab("general")}
              className={`border-b-2 px-4 py-2 text-sm font-medium transition-colors ${activeTab === "general" ? "border-primary text-primary" : "border-transparent text-muted-foreground hover:text-foreground"}`}
@@ -186,7 +186,7 @@ export default function ChannelModal({
                       const canSend = perm ? perm.canSendMessages : true
                       
                       return (
-                         <div key={role.id} className="flex items-center justify-between rounded border border-border p-3">
+                         <div key={role.id} className="flex items-center justify-between rounded border border-cyan-300/20 p-3">
                             <div className="flex items-center gap-2">
                                <div className="h-3 w-3 rounded-full" style={{ backgroundColor: role.color }} />
                                <span className="text-sm font-medium">{role.name}</span>
@@ -209,7 +209,7 @@ export default function ChannelModal({
            )}
         </div>
 
-        <div className="flex items-center justify-end gap-2 border-t border-border bg-muted/10 p-4">
+        <div className="flex items-center justify-end gap-2 border-t border-cyan-300/15 bg-slate-900/50 p-4">
            <Button variant="ghost" onClick={onClose}>Cancel</Button>
            <Button onClick={handleSave} disabled={!name || loading}>
               {initialData ? "Save Changes" : "Create Channel"}

@@ -103,20 +103,19 @@ export default function Auth() {
   const pending = isLoading
 
   return (
-    <div className="relative flex min-h-dvh w-screen items-center justify-center px-5 py-12">
-      <div className="absolute inset-0 -z-10 bg-gradient-to-b from-base-200/60 via-base-100 to-base-100" />
-      <div className="card w-full max-w-md border border-base-300/70 bg-base-100/90 shadow-2xl backdrop-blur-sm">
-        <div className="card-body gap-6 p-8">
+    <div className="safas-page relative flex min-h-dvh w-screen items-center justify-center px-5 py-12">
+      <div className="safas-panel w-full max-w-md p-8">
+        <div className="space-y-6">
           <div className="space-y-2 text-center">
-            <div className="badge badge-outline badge-primary border-primary/30 px-3 py-2 text-[11px] tracking-[0.2em]">
+            <div className="mx-auto inline-flex rounded-full border border-cyan-300/25 bg-cyan-400/10 px-3 py-1.5 text-[11px] font-semibold tracking-[0.2em] text-cyan-200">
               AUTHENTICATION
             </div>
-            <h1 className="text-3xl font-bold tracking-tight">Welcome back</h1>
-            <p className="text-base-content/60">Sign in securely with Shoo to continue.</p>
+            <h1 className="text-3xl font-bold tracking-tight text-slate-100">Welcome back</h1>
+            <p className="text-slate-300/75">Sign in securely with Shoo to continue.</p>
           </div>
 
           {error && (
-            <div className="alert alert-error py-2 text-sm">
+            <div className="rounded-xl border border-red-300/30 bg-red-400/15 px-4 py-2 text-sm text-red-100">
               <span>{error}</span>
             </div>
           )}
@@ -126,7 +125,7 @@ export default function Auth() {
             {pending ? "Authenticating..." : "Continue with Shoo"}
           </Button>
 
-          <p className="text-center text-xs text-base-content/55">
+          <p className="text-center text-xs text-slate-300/60">
             Identity verification is powered by Shoo.
           </p>
         </div>

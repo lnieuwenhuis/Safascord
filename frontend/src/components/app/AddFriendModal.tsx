@@ -47,19 +47,19 @@ export default function AddFriendModal({
 
   return createPortal(
     <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/60 backdrop-blur-sm supports-[backdrop-filter]:bg-black/50 p-4" onClick={onClose}>
-      <div className="w-[440px] rounded-lg border border-border bg-card p-6 shadow-xl text-card-foreground" onClick={(e) => e.stopPropagation()}>
+      <div className="w-[440px] rounded-2xl border border-cyan-300/20 bg-slate-950 p-6 shadow-xl text-slate-100" onClick={(e) => e.stopPropagation()}>
         <h2 className="text-xl font-bold mb-2 uppercase text-sm text-foreground">Add Friend</h2>
-        <p className="text-sm text-muted-foreground mb-6">You can add friends with their username#0000.</p>
+        <p className="text-sm text-slate-300/70 mb-6">You can add friends with their username#0000.</p>
         
         <div className="mb-4">
-             <label className="text-xs font-bold text-muted-foreground uppercase mb-1.5 block">Username</label>
+             <label className="text-xs font-bold text-slate-300/70 uppercase mb-1.5 block">Username</label>
              <div className="flex gap-2">
                 <div className="relative flex-1">
                     <Input 
                         placeholder="Username#0000" 
                         value={username} 
                         onChange={(e) => setUsername(e.target.value)} 
-                        className="bg-muted/50 border-0"
+                        className="bg-slate-900/80 border-cyan-300/20"
                         autoFocus
                         onKeyDown={(e) => e.key === 'Enter' && handleSubmit()}
                     />

@@ -99,6 +99,12 @@ export interface InviteResponse {
     code?: string
     error?: string
     invite?: InviteInfo
+    server?: {
+      id: string
+      name: string
+      iconUrl?: string
+      bannerUrl?: string
+    }
 }
 
 export interface FileUploadResponse {

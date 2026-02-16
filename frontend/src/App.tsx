@@ -16,6 +16,7 @@ import Onboarding from "./pages/Onboarding"
 import Invite from "./pages/Invite"
 import NotFound from "./pages/NotFound"
 import ProtectedRoute from "./components/routes/ProtectedRoute"
+import StagingGuard from "./components/routes/StagingGuard"
 import { StatsPage } from "./components/admin/StatsPage"
 
 function BackgroundManager() {
@@ -70,27 +71,29 @@ export default function App() {
   return (
     <AuthProvider>
       <NotificationProvider>
-        <BrowserRouter>
-          <RoutePersister />
-          <BackgroundManager />
-          <Routes>
-            <Route path="/" element={<Home />} />
-            <Route path="/auth" element={<Auth />} />
-            <Route path="/channels/@me" element={<ProtectedRoute><DMs /></ProtectedRoute>} />
-            <Route path="/channels/@me/:dmId" element={<ProtectedRoute><DMChannel /></ProtectedRoute>} />
-            <Route path="/server" element={<ProtectedRoute><GuildChannel /></ProtectedRoute>} />
-            <Route path="/server/:guildId" element={<ProtectedRoute><GuildChannel /></ProtectedRoute>} />
-            <Route path="/server/:guildId/channel/:channelId" element={<ProtectedRoute><GuildChannel /></ProtectedRoute>} />
-            <Route path="/discover" element={<Discover />} />
-            <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
-            <Route path="/profile" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
-            <Route path="/onboarding" element={<ProtectedRoute><Onboarding /></ProtectedRoute>} />
-            <Route path="/invite/:code" element={<Invite />} />
-            <Route path="/stats" element={<StatsPage />} />
-            <Route path="/404" element={<NotFound />} />
-            <Route path="*" element={<Navigate to="/404" replace />} />
-          </Routes>
-        </BrowserRouter>
+        <StagingGuard>
+          <BrowserRouter>
+            <RoutePersister />
+            <BackgroundManager />
+            <Routes>
+              <Route path="/" element={<Home />} />
+              <Route path="/auth" element={<Auth />} />
+              <Route path="/channels/@me" element={<ProtectedRoute><DMs /></ProtectedRoute>} />
+              <Route path="/channels/@me/:dmId" element={<ProtectedRoute><DMChannel /></ProtectedRoute>} />
+              <Route path="/server" element={<ProtectedRoute><GuildChannel /></ProtectedRoute>} />
+              <Route path="/server/:guildId" element={<ProtectedRoute><GuildChannel /></ProtectedRoute>} />
+              <Route path="/server/:guildId/channel/:channelId" element={<ProtectedRoute><GuildChannel /></ProtectedRoute>} />
+              <Route path="/discover" element={<Discover />} />
+              <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
+              <Route path="/profile" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
+              <Route path="/onboarding" element={<ProtectedRoute><Onboarding /></ProtectedRoute>} />
+              <Route path="/invite/:code" element={<Invite />} />
+              <Route path="/stats" element={<StatsPage />} />
+              <Route path="/404" element={<NotFound />} />
+              <Route path="*" element={<Navigate to="/404" replace />} />
+            </Routes>
+          </BrowserRouter>
+        </StagingGuard>
       </NotificationProvider>
     </AuthProvider>
   )

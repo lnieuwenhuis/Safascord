@@ -2,7 +2,7 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 @plugin "daisyui" {
-  themes: corporate --default, business;
+  themes: business --default, corporate;
   logs: false;
 }
 
@@ -42,32 +42,32 @@
 
 :root {
   --radius: 0.9rem;
-  --background: oklch(0.985 0.004 220);
-  --foreground: oklch(0.27 0.02 248);
-  --card: oklch(1 0 0 / 86%);
-  --card-foreground: var(--foreground);
-  --popover: oklch(1 0 0 / 94%);
-  --popover-foreground: var(--foreground);
-  --primary: oklch(0.59 0.16 230);
-  --primary-foreground: oklch(0.98 0.004 220);
-  --secondary: oklch(0.94 0.012 235);
-  --secondary-foreground: oklch(0.36 0.03 248);
-  --muted: oklch(0.96 0.01 235);
-  --muted-foreground: oklch(0.56 0.023 248);
-  --accent: oklch(0.89 0.03 207);
-  --accent-foreground: oklch(0.32 0.03 248);
-  --destructive: oklch(0.62 0.23 28);
-  --destructive-foreground: oklch(0.98 0.004 220);
-  --border: oklch(0.88 0.012 240);
-  --input: var(--border);
-  --ring: oklch(0.66 0.145 230);
-  --sidebar: oklch(1 0 0 / 78%);
-  --sidebar-foreground: var(--foreground);
+  --background: oklch(0.18 0.03 251);
+  --foreground: oklch(0.95 0.01 247);
+  --card: oklch(0.22 0.035 248 / 92%);
+  --card-foreground: oklch(0.94 0.01 247);
+  --popover: oklch(0.2 0.03 248 / 96%);
+  --popover-foreground: oklch(0.95 0.01 247);
+  --primary: oklch(0.72 0.16 227);
+  --primary-foreground: oklch(0.16 0.03 251);
+  --secondary: oklch(0.29 0.03 248);
+  --secondary-foreground: oklch(0.92 0.01 247);
+  --muted: oklch(0.25 0.02 248);
+  --muted-foreground: oklch(0.76 0.02 247);
+  --accent: oklch(0.31 0.03 226);
+  --accent-foreground: oklch(0.95 0.01 247);
+  --destructive: oklch(0.67 0.2 27);
+  --destructive-foreground: oklch(0.98 0.01 250);
+  --border: oklch(0.42 0.05 236 / 46%);
+  --input: oklch(0.28 0.03 247 / 80%);
+  --ring: oklch(0.75 0.17 225 / 48%);
+  --sidebar: oklch(0.2 0.03 248 / 94%);
+  --sidebar-foreground: oklch(0.93 0.01 247);
   --sidebar-primary: var(--primary);
   --sidebar-primary-foreground: var(--primary-foreground);
-  --sidebar-accent: oklch(0.93 0.013 228);
-  --sidebar-accent-foreground: var(--foreground);
-  --sidebar-border: var(--border);
+  --sidebar-accent: oklch(0.31 0.035 230 / 72%);
+  --sidebar-accent-foreground: oklch(0.95 0.01 247);
+  --sidebar-border: oklch(0.45 0.045 238 / 44%);
   --sidebar-ring: var(--ring);
 }
 
@@ -79,9 +79,9 @@
   }
 
   * {
-    @apply border-border outline-ring/40;
+    @apply border-border outline-ring/50;
     scrollbar-width: thin;
-    scrollbar-color: color-mix(in oklab, var(--primary) 45%, white) transparent;
+    scrollbar-color: color-mix(in oklab, var(--primary) 55%, white) transparent;
   }
 
   body {
@@ -95,10 +95,24 @@
       sans-serif;
     font-feature-settings: "rlig" 1, "calt" 1;
     background-image:
-      radial-gradient(circle at 12% 18%, color-mix(in oklab, var(--accent) 45%, transparent) 0%, transparent 28%),
-      radial-gradient(circle at 86% 10%, color-mix(in oklab, var(--primary) 35%, transparent) 0%, transparent 24%),
-      linear-gradient(180deg, color-mix(in oklab, white 82%, var(--secondary) 18%), var(--background));
+      radial-gradient(1200px 550px at 10% -10%, rgba(41, 151, 255, 0.3), transparent 60%),
+      radial-gradient(850px 500px at 110% 12%, rgba(91, 33, 182, 0.36), transparent 62%),
+      linear-gradient(180deg, #040816 0%, #07102b 42%, #050915 100%);
     background-attachment: fixed;
+    position: relative;
+  }
+
+  body::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: -1;
+    opacity: 0.26;
+    background-image:
+      linear-gradient(rgba(37, 99, 235, 0.12) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(37, 99, 235, 0.12) 1px, transparent 1px);
+    background-size: 92px 92px;
   }
 
   ::-webkit-scrollbar {
@@ -107,13 +121,35 @@
   }
 
   ::-webkit-scrollbar-thumb {
-    background: color-mix(in oklab, var(--primary) 40%, white);
+    background: color-mix(in oklab, var(--primary) 48%, #ffffff22);
     border-radius: 999px;
     border: 2px solid transparent;
     background-clip: padding-box;
   }
 
   ::-webkit-scrollbar-track {
-    background: color-mix(in oklab, var(--background) 78%, white);
+    background: transparent;
+  }
+}
+
+@layer utilities {
+  .safas-page {
+    @apply relative min-h-dvh text-slate-100;
+  }
+
+  .safas-shell {
+    @apply border border-cyan-400/20 bg-slate-950/65 backdrop-blur-xl shadow-[0_18px_80px_-36px_rgba(34,211,238,0.6)];
+  }
+
+  .safas-panel {
+    @apply rounded-2xl border border-cyan-400/20 bg-slate-900/60 backdrop-blur-xl shadow-[0_16px_56px_-30px_rgba(34,211,238,0.45)];
+  }
+
+  .safas-label {
+    @apply text-[11px] font-semibold uppercase tracking-[0.28em] text-cyan-300/80;
+  }
+
+  .safas-muted {
+    @apply text-slate-300/70;
   }
 }

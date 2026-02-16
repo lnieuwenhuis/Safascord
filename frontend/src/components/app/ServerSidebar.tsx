@@ -48,24 +48,24 @@ export default function ServerSidebar() {
 
   const activeServer = editId ? servers.find(s => s.id === editId) || null : null
   return (
-    <aside className="flex h-dvh w-16 flex-col items-center gap-2 overflow-y-auto overflow-x-visible border-r border-base-300/70 bg-base-100/70 px-2 py-3 backdrop-blur-sm">
+    <aside className="flex h-dvh w-16 flex-col items-center gap-2 overflow-y-auto overflow-x-visible bg-slate-950/88 px-2 py-3 text-slate-100">
       <Button
         variant="default"
         size="icon"
-        className="rounded-2xl shadow-md"
+        className="rounded-2xl border border-cyan-300/30 shadow-md"
         onClick={() => navigate('/channels/@me')}
       >
         C
       </Button>
-      <div className="h-px w-8 bg-base-300" />
+      <div className="h-px w-8 bg-cyan-300/25" />
       {servers.map(s => (
         <button
           key={s.id}
           className={cn(
             "group relative flex h-12 w-12 items-center justify-center overflow-hidden rounded-2xl border text-xs font-semibold transition-all",
             activeServerId === s.id
-              ? "border-primary bg-primary/10 text-primary shadow-md"
-              : "border-base-300/70 bg-base-100 text-base-content/85 hover:border-primary/40 hover:bg-primary/5"
+              ? "border-cyan-300/60 bg-cyan-400/18 text-cyan-100 shadow-md"
+              : "border-cyan-300/25 bg-slate-900/80 text-slate-100/90 hover:border-cyan-300/45 hover:bg-cyan-400/10"
           )}
           onClick={() => {
             setSelection({ serverId: String(s.id), channelId: undefined })
@@ -86,9 +86,9 @@ export default function ServerSidebar() {
       ))}
       {menu && createPortal(
         <>
-          <div className="fixed inset-0 z-[200]" onClick={() => setMenu(null)} />
+          <div className="fixed inset-0 z-[320]" onClick={() => setMenu(null)} />
           <div
-            className="menu fixed z-[210] w-44 rounded-box border border-base-300 bg-base-100 p-1 shadow-xl"
+            className="menu fixed z-[330] w-44 rounded-box border border-cyan-300/20 bg-slate-950 p-1 text-slate-100 shadow-xl"
             style={{ left: menu.x, top: menu.y }}
             onClick={(e) => e.stopPropagation()}
           >
@@ -140,7 +140,7 @@ export default function ServerSidebar() {
         }}
       />
       <div className="mt-2">
-        <button className="btn btn-circle btn-outline h-12 min-h-12 w-12 border-base-300 text-xl" onClick={() => setCreateOpen(true)}>+</button>
+        <button className="btn btn-circle h-12 min-h-12 w-12 border border-cyan-300/35 bg-slate-900 text-xl text-cyan-100 hover:bg-cyan-400/20" onClick={() => setCreateOpen(true)}>+</button>
       </div>
       <CreateServerModal 
         open={createOpen} 

@@ -66,7 +66,7 @@ export default function Inbox() {
       >
          <div className={cn(
            "flex items-center justify-center w-12 h-12 rounded-[24px] group-hover:rounded-[16px] transition-all duration-200",
-           open ? "bg-primary text-primary-foreground rounded-[16px]" : "bg-background text-foreground hover:bg-primary hover:text-primary-foreground",
+           open ? "bg-cyan-400/20 text-cyan-100 rounded-[16px]" : "bg-slate-900 text-slate-100 hover:bg-cyan-400/20 hover:text-cyan-100",
            unreadCount > 0 && !open && !user?.notificationsQuietMode ? "animate-bounce" : ""
          )}>
            <Bell className="w-6 h-6" />
@@ -82,11 +82,11 @@ export default function Inbox() {
         <>
           <div className="fixed inset-0 z-[230]" onClick={() => setOpen(false)} />
           <div
-            className="fixed z-[240] flex max-h-[500px] w-80 flex-col overflow-hidden rounded-md border border-border bg-card shadow-xl"
+            className="fixed z-[240] flex max-h-[500px] w-80 flex-col overflow-hidden rounded-xl border border-cyan-300/20 bg-slate-950 shadow-xl"
             style={{ left: `${panelLeft}px`, top: `${panelTop}px` }}
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex items-center justify-between border-b border-border bg-card p-4 shrink-0">
+            <div className="flex items-center justify-between border-b border-cyan-300/15 bg-slate-950 p-4 shrink-0">
               <h4 className="font-semibold">Inbox</h4>
               <div className="flex gap-1">
                  <Button variant="ghost" size="icon" className="h-8 w-8" onClick={markAllRead} title="Mark all read">

@@ -21,9 +21,9 @@ export default function ConfirmDialog({
   if (!open) return null
   return createPortal(
     <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/60 backdrop-blur-sm supports-[backdrop-filter]:bg-black/50 p-4" onClick={onCancel}>
-      <div className="w-[420px] rounded-lg border border-border bg-card p-4 shadow-xl text-card-foreground" onClick={(e) => e.stopPropagation()}>
+      <div className="w-[420px] rounded-2xl border border-cyan-300/20 bg-slate-950 p-4 shadow-xl text-slate-100" onClick={(e) => e.stopPropagation()}>
         <div className="text-lg font-semibold">{title}</div>
-        {description ? <div className="mt-2 text-sm text-muted-foreground">{description}</div> : null}
+        {description ? <div className="mt-2 text-sm text-slate-300/72">{description}</div> : null}
         <div className="mt-6 flex items-center justify-end gap-2">
           <Button variant="outline" onClick={onCancel}>{cancelText}</Button>
           <Button variant="brand" onClick={onConfirm}>{confirmText}</Button>
@@ -33,4 +33,3 @@ export default function ConfirmDialog({
     document.body
   )
 }
-
