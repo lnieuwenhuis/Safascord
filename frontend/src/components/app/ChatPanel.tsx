@@ -615,6 +615,19 @@ export default function ChatPanel({ variant, channelName, channelId, guildName, 
     if (fileInputRef.current) fileInputRef.current.value = ""
   }
 
+  const applyMessagesUpdate = useCallback((updater: (prev: Message[]) => Message[]) => {
+    setMsgs((prev) => {
+      const next = updater(prev)
+      setCachedChannelMessages(channelKey, {
+        messages: next,
+        hasMore,
+        oldestTimestamp: oldestTimestampRef.current,
+        loaded: true,
+      })
+      return next
+    })
+  }, [channelKey, hasMore, setCachedChannelMessages])
+
   const send = async () => {
     const t = text.trim()
     if (!t && !selectedFile) return
@@ -644,29 +657,58 @@ export default function ChatPanel({ variant, channelName, channelId, guildName, 
        if (!attachmentUrl && !t) return // Upload failed and no text
     }
 
+    let optimisticId: string | null = null
     try {
       const shouldAutoScroll = isNearBottom()
       if (token) {
-        const r = await api.sendMessage(token, channelKey, t, guildId, attachmentUrl)
-        if ("error" in r) {
-          console.error("Error sending message:", r.error)
-          return
+        optimisticId = `local:${Date.now()}:${Math.random().toString(36).slice(2, 8)}`
+        const optimisticTs = new Date().toISOString()
+        const optimisticMessage: Message = {
+          id: optimisticId,
+          user: display,
+          userAvatar: myAvatar || undefined,
+          userId: user?.id,
+          text: t,
+          attachmentUrl,
+          ts: optimisticTs,
         }
-        const ts = r.message.ts
-        setMsgs((prev) => {
-          if (prev.some((x) => x.id === r.message!.id)) return prev
-          return [...prev, { id: r.message!.id, user: display, userAvatar: myAvatar || undefined, userId: user?.id, text: t, attachmentUrl: (r.message).attachmentUrl, ts, roleColor: (r.message).roleColor }]
-        })
+
+        applyMessagesUpdate((prev) => [...prev, optimisticMessage])
         if (shouldAutoScroll) {
           requestAnimationFrame(() => {
             scrollToBottom("smooth")
           })
         }
+
+        const r = await api.sendMessage(token, channelKey, t, guildId, attachmentUrl)
+        if ("error" in r) {
+          console.error("Error sending message:", r.error)
+          applyMessagesUpdate((prev) => prev.filter((x) => x.id !== optimisticId))
+          return
+        }
+        const confirmedMessage: Message = {
+          id: r.message.id,
+          user: display,
+          userAvatar: myAvatar || undefined,
+          userId: user?.id,
+          text: t,
+          attachmentUrl: r.message.attachmentUrl,
+          ts: r.message.ts,
+          roleColor: r.message.roleColor,
+        }
+
+        applyMessagesUpdate((prev) => {
+          const withoutOptimistic = prev.filter((x) => x.id !== optimisticId)
+          if (withoutOptimistic.some((x) => x.id === confirmedMessage.id)) return withoutOptimistic
+          return [...withoutOptimistic, confirmedMessage]
+        })
       } else {
-        setMsgs((prev) => [...prev, { id: String(Date.now()), user: display, text: t, ts: new Date().toISOString() }])
+        applyMessagesUpdate((prev) => [...prev, { id: String(Date.now()), user: display, text: t, ts: new Date().toISOString() }])
       }
     } catch {
-      setMsgs((prev) => [...prev, { id: String(Date.now()), user: display, text: t, ts: new Date().toISOString() }])
+      if (optimisticId) {
+        applyMessagesUpdate((prev) => prev.filter((x) => x.id !== optimisticId))
+      }
     }
   }
 
