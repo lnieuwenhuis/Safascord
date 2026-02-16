@@ -67,10 +67,10 @@ export default function AppShell({
 
   return (
     <>
-      <div className="relative h-dvh overflow-hidden px-2 py-2 md:px-3 md:py-3">
+      <div className="relative h-dvh overflow-hidden">
         <div
           className={cn(
-            "safas-shell grid h-full min-h-0 overflow-hidden rounded-2xl",
+            "grid h-full min-h-0 overflow-hidden bg-slate-950/70",
             "grid-cols-[1fr]",
             "md:grid-cols-[68px_280px_1fr]",
             variant === "guild" && showUserList ? "lg:grid-cols-[68px_280px_1fr_280px]" : "lg:grid-cols-[68px_280px_1fr]"

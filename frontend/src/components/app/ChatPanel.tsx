@@ -1,7 +1,7 @@
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Hash, MessageSquare, Menu, Users, Pencil, Trash, Plus, X, FileIcon } from "lucide-react"
-import { useEffect, useRef, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import { api, getFullUrl } from "@/lib/api"
 import { useAuth } from "@/hooks/useAuth"
 import { cn } from "@/lib/utils"
@@ -22,6 +22,87 @@ interface ChatPanelProps {
   dmUser?: UserSummary
 }
 
+const PAGE_SIZE = 30
+const INITIAL_FILL_MAX_PAGES = 4
+const TOP_FETCH_THRESHOLD_PX = 72
+const BOTTOM_STICKY_THRESHOLD_PX = 96
+const LOAD_MORE_COOLDOWN_MS = 350
+
+type AttachmentMode = "image" | "video" | "file"
+
+function detectAttachmentMode(url: string): AttachmentMode {
+  if (/\.(png|jpe?g|gif|webp|avif|bmp|svg)(\?|$)/i.test(url)) return "image"
+  if (/\.(mp4|webm|mov|m4v|ogg|ogv)(\?|$)/i.test(url)) return "video"
+  return "file"
+}
+
+function MessageSkeletonRows({ count }: { count: number }) {
+  return (
+    <div className="space-y-4">
+      {Array.from({ length: count }).map((_, index) => (
+        <div key={`skeleton-${index}`} className="flex animate-pulse items-start gap-3">
+          <div className="h-8 w-8 rounded-full bg-slate-800" />
+          <div className="min-w-0 flex-1 space-y-2">
+            <div className="h-3 w-32 rounded bg-slate-800/90" />
+            <div className="h-3 w-[82%] rounded bg-slate-800/70" />
+            <div className="h-3 w-[65%] rounded bg-slate-800/60" />
+          </div>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function AttachmentBubble({ url }: { url: string }) {
+  const resolvedUrl = getFullUrl(url) || url
+  const guessedMode = detectAttachmentMode(resolvedUrl)
+  const [mode, setMode] = useState<AttachmentMode>(guessedMode === "file" ? "image" : guessedMode)
+  const [triedVideoFallback, setTriedVideoFallback] = useState(false)
+
+  if (mode === "image") {
+    return (
+      <img
+        src={resolvedUrl}
+        alt="Attachment"
+        className="max-h-80 max-w-sm rounded-md object-contain"
+        loading="lazy"
+        onError={() => {
+          if (!triedVideoFallback) {
+            setTriedVideoFallback(true)
+            setMode("video")
+            return
+          }
+          setMode("file")
+        }}
+      />
+    )
+  }
+
+  if (mode === "video") {
+    return (
+      <video
+        src={resolvedUrl}
+        controls
+        preload="metadata"
+        className="max-h-80 max-w-sm rounded-md"
+        onError={() => setMode("file")}
+      />
+    )
+  }
+
+  return (
+    <a
+      href={resolvedUrl}
+      target="_blank"
+      rel="noreferrer"
+      className="flex w-fit items-center gap-2 rounded-xl border border-base-300 bg-base-200/60 p-2 text-blue-500 hover:underline"
+    >
+      <FileIcon className="h-4 w-4" />
+      Download Attachment
+    </a>
+  )
+}
+
 export default function ChatPanel({ variant, channelName, channelId, guildName, guildId, onMobileMenu, onUserListToggle, showUserList, canSend = true, dmUser }: ChatPanelProps) {
   const { markChannelRead } = useNotifications()
   const [msgs, setMsgs] = useState<Message[]>([])
@@ -31,7 +112,12 @@ export default function ChatPanel({ variant, channelName, channelId, guildName, 
   const wsRef = useRef<WebSocket | null>(null)
   const idleRef = useRef<number | null>(null)
   const [hasMore, setHasMore] = useState(true)
+  const [loadingInitial, setLoadingInitial] = useState(true)
   const [loadingMore, setLoadingMore] = useState(false)
+  const loadingMoreRef = useRef(false)
+  const isAtBottomRef = useRef(true)
+  const lastLoadMoreAtRef = useRef(0)
+  const oldestTimestampRef = useRef<string | undefined>(undefined)
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null)
   const [localDmUser, setLocalDmUser] = useState<{ username: string; displayName: string } | null>(null)
   
@@ -170,6 +256,24 @@ export default function ChatPanel({ variant, channelName, channelId, guildName, 
   const display = (user && (user.displayName || user.username)) || "You"
   const myAvatar = user?.avatarUrl
 
+  const isNearBottom = useCallback(() => {
+    const el = listRef.current
+    if (!el) return true
+    const distance = el.scrollHeight - (el.scrollTop + el.clientHeight)
+    return distance <= BOTTOM_STICKY_THRESHOLD_PX
+  }, [])
+
+  const scrollToBottom = useCallback((behavior: ScrollBehavior = "auto") => {
+    const el = listRef.current
+    if (!el) return
+    el.scrollTo({ top: el.scrollHeight, behavior })
+    isAtBottomRef.current = true
+  }, [])
+
+  const nextFrame = useCallback(() => new Promise<void>((resolve) => {
+    requestAnimationFrame(() => resolve())
+  }), [])
+
   function fmt(ts?: string) {
     if (!ts) return ""
     try { return new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) } catch { return "" }
@@ -195,55 +299,134 @@ export default function ChatPanel({ variant, channelName, channelId, guildName, 
   const [canSendState, setCanSendState] = useState(true)
   const effectiveCanSend = canSend && canSendState
 
-  useEffect(() => {
-    if (!channelKey) return
-    const token = localStorage.getItem("token") || ""
-    // Pass serverId (guildId) if available to disambiguate channels with same name
-    api.messages(token, channelKey, 50, undefined, guildId).then((r) => {
-      setMsgs(r.messages)
-      setHasMore(r.messages.length >= 50)
-    }).catch(() => {
-      setMsgs([])
-    })
-    
-    // Check channel permissions if in guild
-     if (variant === "guild" && token && guildId) {
-          api.channels(guildId, token).then(res => {
-             // Find our channel
-             // Flatten sections
-            let found = false
-            // If no sections/channels returned, we assume no access or empty
-            // If sections exist, check permissions for the specific channel
-            // Flatten sections to find the channel
-            for (const s of res.sections) {
-               const c = s.channels.find(x => x.name === channelName || x.id === channelKey)
-               if (c) {
-                  // If canSendMessages is undefined, it means no override, so it defaults to true/inherited
-                  // But in our API, if the user has ANY role that allows sending, the backend should reflect that.
-                  // The backend API logic for `channels` endpoint might need to be robust.
-                  // For now, we trust the `canSendMessages` property from the API.
-                  setCanSendState(c.canSendMessages ?? true)
-                  found = true
-                  break
-               }
-            }
-            // If channel not found in the list (maybe it's hidden), we can't send.
-            if (!found) setCanSendState(false) 
-         }).catch(e => {
-            console.error(e)
-            // If API fails, default to true or false? False is safer.
-            setCanSendState(false)
-         })
-    } else {
-       setCanSendState(true)
+  const loadOlderMessages = useCallback(async () => {
+    if (!channelKey || loadingInitial || !hasMore || loadingMoreRef.current) return
+    if (Date.now() - lastLoadMoreAtRef.current < LOAD_MORE_COOLDOWN_MS) return
+
+    const authToken = localStorage.getItem("token") || ""
+    const before = oldestTimestampRef.current
+    if (!before) return
+
+    const el = listRef.current
+    const previousScrollHeight = el?.scrollHeight ?? 0
+    const previousScrollTop = el?.scrollTop ?? 0
+
+    loadingMoreRef.current = true
+    setLoadingMore(true)
+    try {
+      const response = await api.messages(authToken, channelKey, PAGE_SIZE, before, guildId)
+      const older = response.messages || []
+      if (older.length === 0) {
+        setHasMore(false)
+        return
+      }
+
+      setMsgs((prev) => {
+        const seen = new Set(prev.map((msg) => msg.id))
+        const filteredOlder = older.filter((msg) => !seen.has(msg.id))
+        return [...filteredOlder, ...prev]
+      })
+      oldestTimestampRef.current = older[0]?.ts || oldestTimestampRef.current
+      setHasMore(older.length >= PAGE_SIZE)
+
+      await nextFrame()
+      const list = listRef.current
+      if (!list) return
+      const nextScrollHeight = list.scrollHeight
+      list.scrollTop = Math.max(0, previousScrollTop + (nextScrollHeight - previousScrollHeight))
+    } catch (e) {
+      console.error("Failed to load older messages", e)
+    } finally {
+      loadingMoreRef.current = false
+      setLoadingMore(false)
+      lastLoadMoreAtRef.current = Date.now()
     }
-  }, [channelName, channelKey, user?.id, variant, guildName, guildId, token])
+  }, [channelKey, guildId, hasMore, loadingInitial, nextFrame])
 
   useEffect(() => {
-    const el = listRef.current
-    if (!el) return
-    el.scrollTop = el.scrollHeight
-  }, [msgs.length, channelKey, variant])
+    if (!channelKey) return
+    let cancelled = false
+    const authToken = localStorage.getItem("token") || ""
+
+    setMsgs([])
+    setHasMore(true)
+    setLoadingInitial(true)
+    oldestTimestampRef.current = undefined
+    loadingMoreRef.current = false
+    setLoadingMore(false)
+    isAtBottomRef.current = true
+
+    const loadInitialMessages = async () => {
+      try {
+        let merged: Message[] = []
+        let before: string | undefined
+        let more = true
+        let pages = 0
+
+        while (!cancelled && more && pages < INITIAL_FILL_MAX_PAGES) {
+          const response = await api.messages(authToken, channelKey, PAGE_SIZE, before, guildId)
+          const batch = response.messages || []
+          merged = pages === 0 ? batch : [...batch, ...merged]
+          more = batch.length >= PAGE_SIZE
+          before = merged[0]?.ts
+
+          setMsgs(merged)
+          setHasMore(more)
+          oldestTimestampRef.current = merged[0]?.ts
+          pages += 1
+
+          await nextFrame()
+          const list = listRef.current
+          if (!list) continue
+          if (list.scrollHeight > list.clientHeight + 24) break
+          if (batch.length === 0) break
+        }
+      } catch (e) {
+        console.error("Failed to load messages", e)
+        if (!cancelled) {
+          setMsgs([])
+          setHasMore(false)
+        }
+      } finally {
+        if (!cancelled) {
+          setLoadingInitial(false)
+          await nextFrame()
+          scrollToBottom("auto")
+        }
+      }
+    }
+
+    void loadInitialMessages()
+
+    return () => {
+      cancelled = true
+    }
+  }, [channelKey, guildId, nextFrame, scrollToBottom])
+
+  useEffect(() => {
+    if (!channelKey) return
+    const authToken = localStorage.getItem("token") || ""
+
+    // Check channel permissions if in guild
+    if (variant === "guild" && authToken && guildId) {
+      api.channels(guildId, authToken).then((res) => {
+        let found = false
+        for (const section of res.sections) {
+          const channel = section.channels.find((entry) => entry.name === channelName || entry.id === channelKey)
+          if (!channel) continue
+          setCanSendState(channel.canSendMessages ?? true)
+          found = true
+          break
+        }
+        if (!found) setCanSendState(false)
+      }).catch((e) => {
+        console.error(e)
+        setCanSendState(false)
+      })
+    } else {
+      setCanSendState(true)
+    }
+  }, [channelKey, channelName, guildId, variant])
 
   useEffect(() => {
     if (!channelKey) return
@@ -305,6 +488,7 @@ export default function ChatPanel({ variant, channelName, channelId, guildName, 
           }
 
           if (d.type === "message" && sameChannel && d.message) {
+            const shouldAutoScroll = isNearBottom()
             setMsgs((prevMsgs) => {
               if (prevMsgs.some((x) => x.id === d.message!.id)) return prevMsgs
               return [...prevMsgs, {
@@ -318,6 +502,11 @@ export default function ChatPanel({ variant, channelName, channelId, guildName, 
                 roleColor: d.roleColor,
               }]
             })
+            if (shouldAutoScroll) {
+              requestAnimationFrame(() => {
+                scrollToBottom("smooth")
+              })
+            }
             if (d.user) {
               setTyping((prevTyping) => {
                 const next = new Set(prevTyping)
@@ -370,7 +559,7 @@ export default function ChatPanel({ variant, channelName, channelId, guildName, 
       try { cur.close() } catch (e) { console.error(e) }
       wsRef.current = null
     }
-  }, [channelKey, channelName, user?.id])
+  }, [channelKey, channelName, isNearBottom, scrollToBottom, user?.id])
 
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
@@ -407,9 +596,10 @@ export default function ChatPanel({ variant, channelName, channelId, guildName, 
        try {
          const res = await api.uploadFile(token, selectedFile)
          if (res.url) attachmentUrl = res.url
-         else alert("Upload failed")
-       } catch {
-         alert("Upload failed")
+         else alert(res.error || "Upload failed")
+       } catch (error) {
+         const message = error instanceof Error ? error.message : "Upload failed"
+         alert(message)
        } finally {
          setIsUploading(false)
          clearFile()
@@ -418,6 +608,7 @@ export default function ChatPanel({ variant, channelName, channelId, guildName, 
     }
 
     try {
+      const shouldAutoScroll = isNearBottom()
       if (token) {
         const r = await api.sendMessage(token, channelKey, t, guildId, attachmentUrl)
         if ("error" in r) {
@@ -429,6 +620,11 @@ export default function ChatPanel({ variant, channelName, channelId, guildName, 
           if (prev.some((x) => x.id === r.message!.id)) return prev
           return [...prev, { id: r.message!.id, user: display, userAvatar: myAvatar || undefined, userId: user?.id, text: t, attachmentUrl: (r.message).attachmentUrl, ts, roleColor: (r.message).roleColor }]
         })
+        if (shouldAutoScroll) {
+          requestAnimationFrame(() => {
+            scrollToBottom("smooth")
+          })
+        }
       } else {
         setMsgs((prev) => [...prev, { id: String(Date.now()), user: display, text: t, ts: new Date().toISOString() }])
       }
@@ -437,20 +633,12 @@ export default function ChatPanel({ variant, channelName, channelId, guildName, 
     }
   }
 
-  const onScroll = async () => {
+  const onScroll = () => {
     const el = listRef.current
-    if (!el || loadingMore || !hasMore) return
-    if (el.scrollTop <= 0) {
-      setLoadingMore(true)
-      const oldest = msgs[0]?.ts
-      const token = localStorage.getItem("token") || ""
-      try {
-        const r = await api.messages(token, channelKey, 50, oldest, guildId)
-        setMsgs((prev) => [...r.messages, ...prev])
-        setHasMore(r.messages.length >= 50)
-      } finally {
-        setLoadingMore(false)
-      }
+    if (!el) return
+    isAtBottomRef.current = isNearBottom()
+    if (el.scrollTop <= TOP_FETCH_THRESHOLD_PX) {
+      void loadOlderMessages()
     }
   }
 
@@ -482,7 +670,7 @@ export default function ChatPanel({ variant, channelName, channelId, guildName, 
   }
 
   return (
-    <div className="min-h-0 flex flex-1 flex-col bg-slate-950/45 text-slate-100">
+    <div className="h-full min-h-0 flex flex-col bg-slate-950/45 text-slate-100">
       <div className="flex h-12 items-center justify-between border-b border-cyan-300/12 bg-slate-950/75 px-4 shadow-sm backdrop-blur-xl">
         <div className="flex items-center gap-2">
           <Button variant="ghost" size="icon" className="md:hidden mr-2 -ml-2 text-slate-300/75" onClick={onMobileMenu}>
@@ -513,7 +701,14 @@ export default function ChatPanel({ variant, channelName, channelId, guildName, 
       </div>
       <div ref={listRef} onScroll={onScroll} className="flex-1 min-h-0 overflow-y-auto px-4 py-3">
         <div className="space-y-4">
-          {(() => {
+          {loadingInitial && msgs.length === 0 ? <MessageSkeletonRows count={7} /> : null}
+          {loadingMore ? <MessageSkeletonRows count={2} /> : null}
+          {!loadingInitial && msgs.length === 0 ? (
+            <div className="rounded-xl border border-cyan-300/15 bg-slate-900/40 px-4 py-3 text-sm text-slate-300/70">
+              No messages yet. Say hi.
+            </div>
+          ) : null}
+          {msgs.length > 0 && (() => {
             type Group = { type: 'group'; user: string; userAvatar?: string; userId?: string; messages: { id: string; text: string; attachmentUrl?: string; ts?: string }[]; roleColor?: string }
             type DateSep = { type: 'date'; date: Date; id: string }
             const nodes: (Group | DateSep)[] = []
@@ -645,18 +840,9 @@ export default function ChatPanel({ variant, channelName, channelId, guildName, 
                           )}
                           
                           {it.attachmentUrl && (
-                             <div className="mt-2">
-                                {it.attachmentUrl.match(/\.(jpg|jpeg|png|gif|webp)$/i) ? (
-                                   <img src={getFullUrl(it.attachmentUrl) || ""} alt="Attachment" className="max-w-sm max-h-80 rounded-md object-contain" />
-                                ) : it.attachmentUrl.match(/\.(mp4|webm|mov)$/i) ? (
-                                   <video src={getFullUrl(it.attachmentUrl) || ""} controls className="max-w-sm max-h-80 rounded-md" />
-                                ) : (
-                                   <a href={getFullUrl(it.attachmentUrl) || ""} target="_blank" rel="noreferrer" className="flex w-fit items-center gap-2 rounded-xl border border-base-300 bg-base-200/60 p-2 text-blue-500 hover:underline">
-                                      <FileIcon className="h-4 w-4" />
-                                      Download Attachment
-                                   </a>
-                                )}
-                             </div>
+                            <div className="mt-2">
+                              <AttachmentBubble url={it.attachmentUrl} />
+                            </div>
                           )}
                           
                           {!isEditing && isMyMessage && (
