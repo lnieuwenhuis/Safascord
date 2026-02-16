@@ -1,7 +1,119 @@
 import { pool } from "./db.js"
 
+async function ensureBaseSchema() {
+  await pool.query(`CREATE EXTENSION IF NOT EXISTS pgcrypto;`)
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS users (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      username TEXT NOT NULL UNIQUE,
+      email TEXT,
+      display_name TEXT,
+      password_hash TEXT,
+      avatar_url TEXT,
+      bio TEXT,
+      banner_color TEXT DEFAULT '#000000',
+      banner_url TEXT,
+      status TEXT DEFAULT 'online',
+      discriminator VARCHAR(4),
+      allow_dms_from_strangers BOOLEAN DEFAULT TRUE,
+      notifications_quiet_mode BOOLEAN DEFAULT FALSE,
+      created_at TIMESTAMPTZ DEFAULT now(),
+      shoo_sub TEXT
+    );
+  `)
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS servers (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      name TEXT NOT NULL,
+      description TEXT,
+      icon_url TEXT,
+      banner_url TEXT,
+      owner_id UUID REFERENCES users(id) ON DELETE SET NULL
+    );
+  `)
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS roles (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      server_id UUID REFERENCES servers(id) ON DELETE CASCADE,
+      name TEXT NOT NULL,
+      display_group TEXT NOT NULL DEFAULT 'Member',
+      color TEXT DEFAULT '#99aab5',
+      can_manage_channels BOOLEAN DEFAULT FALSE,
+      can_manage_server BOOLEAN DEFAULT FALSE,
+      can_manage_roles BOOLEAN DEFAULT FALSE,
+      position INTEGER DEFAULT 0
+    );
+  `)
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS server_members (
+      server_id UUID REFERENCES servers(id) ON DELETE CASCADE,
+      user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+      role_id UUID REFERENCES roles(id) ON DELETE SET NULL,
+      muted BOOLEAN DEFAULT FALSE,
+      PRIMARY KEY (server_id, user_id)
+    );
+  `)
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS channels (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      server_id UUID REFERENCES servers(id) ON DELETE CASCADE,
+      name TEXT NOT NULL,
+      type VARCHAR(20) NOT NULL DEFAULT 'text',
+      category TEXT
+    );
+  `)
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS channel_members (
+      channel_id UUID REFERENCES channels(id) ON DELETE CASCADE,
+      user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+      created_at TIMESTAMPTZ DEFAULT now(),
+      PRIMARY KEY (channel_id, user_id)
+    );
+  `)
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS messages (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      channel_id UUID REFERENCES channels(id) ON DELETE CASCADE,
+      user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+      content TEXT NOT NULL,
+      attachment_url TEXT,
+      created_at TIMESTAMPTZ DEFAULT now()
+    );
+  `)
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS channel_categories (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      server_id UUID REFERENCES servers(id) ON DELETE CASCADE,
+      name TEXT NOT NULL
+    );
+  `)
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS invites (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      server_id UUID REFERENCES servers(id) ON DELETE CASCADE,
+      code TEXT NOT NULL UNIQUE,
+      created_by UUID REFERENCES users(id) ON DELETE SET NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      expires_at TIMESTAMPTZ,
+      max_uses INT,
+      uses INT NOT NULL DEFAULT 0
+    );
+  `)
+}
+
 export async function runMigrations() {
   try {
+    await ensureBaseSchema()
+
     await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS bio TEXT;`)
     await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS banner_color TEXT DEFAULT '#000000';`)
     await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS banner_url TEXT;`)
