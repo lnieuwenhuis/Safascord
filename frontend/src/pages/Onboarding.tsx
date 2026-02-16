@@ -70,25 +70,24 @@ export default function Onboarding() {
   }
   
   if (authLoading) return (
-    <div className="flex h-screen items-center justify-center bg-background">
+    <div className="safas-page flex h-screen items-center justify-center">
       <div className="animate-pulse text-muted-foreground">Loading...</div>
     </div>
   )
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-background p-4 relative overflow-hidden">
-      <div className="absolute inset-0 bg-gradient-to-br from-primary/10 via-transparent to-primary/5 pointer-events-none" />
-      <Card className="relative z-10 w-full max-w-md border-border bg-card shadow-xl">
+    <div className="safas-page flex min-h-screen items-center justify-center p-4">
+      <Card className="safas-panel relative z-10 w-full max-w-md border-cyan-300/20 bg-slate-900/70 shadow-xl">
         <CardHeader className="text-center space-y-2">
-          <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-primary/10 text-primary">
+          <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full border border-cyan-300/30 bg-cyan-400/10 text-cyan-200">
             <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
           </div>
-          <CardTitle className="text-2xl font-bold">Welcome!</CardTitle>
-          <CardDescription>Let's set up your profile before we jump in.</CardDescription>
+          <CardTitle className="text-2xl font-bold text-slate-100">Welcome!</CardTitle>
+          <CardDescription className="text-slate-300/72">Let's set up your profile before we jump in.</CardDescription>
         </CardHeader>
         <CardContent>
           {error && (
-            <div className="mb-4 rounded-md bg-destructive/10 p-3 text-sm text-destructive">
+            <div className="mb-4 rounded-xl border border-red-300/30 bg-red-400/15 p-3 text-sm text-red-100">
               {error}
             </div>
           )}

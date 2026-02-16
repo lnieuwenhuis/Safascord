@@ -88,7 +88,7 @@ export default function ChannelSidebar({ guildId, activeChannelId }: { guildId?:
   }
 
   return (
-    <aside className="flex h-dvh w-full flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground backdrop-blur-sm">
+    <aside className="flex h-dvh w-full flex-col bg-slate-950/86 text-slate-100 backdrop-blur-xl">
       {server?.bannerUrl && (
         <div className="w-full h-32 relative">
            <img src={getFullUrl(server.bannerUrl) || server.bannerUrl} alt="Banner" className="w-full h-full object-cover" />
@@ -96,10 +96,10 @@ export default function ChannelSidebar({ guildId, activeChannelId }: { guildId?:
         </div>
       )}
       <div className="flex-1 overflow-y-auto px-3 py-3">
-        <div className="mb-3 flex items-center justify-between rounded-xl border border-base-300/70 bg-base-100/60 px-2 py-2">
+        <div className="mb-3 flex items-center justify-between rounded-xl border border-cyan-300/20 bg-slate-900/70 px-2 py-2">
           <div className="truncate text-sm font-semibold">{server?.name}</div>
           <div className="relative">
-            <button className="btn btn-ghost btn-xs btn-square" onClick={(e) => {
+            <button className="btn btn-ghost btn-xs btn-square text-cyan-100 hover:bg-cyan-400/20" onClick={(e) => {
               e.preventDefault()
               const rect = e.currentTarget.getBoundingClientRect()
               openMenu("__header__", rect.right - 176, rect.bottom + 8)
@@ -108,7 +108,7 @@ export default function ChannelSidebar({ guildId, activeChannelId }: { guildId?:
             </button>
           </div>
         </div>
-        <label className="input input-bordered mb-4 h-9 w-full border-base-300/80 bg-base-100/70">
+        <label className="input input-bordered mb-4 h-9 w-full border-cyan-300/20 bg-slate-900/75">
           <Search className="h-4 w-4 opacity-50" />
           <input
             value={channelQuery}
@@ -121,7 +121,7 @@ export default function ChannelSidebar({ guildId, activeChannelId }: { guildId?:
         <div className="space-y-4">
           {sections.map((s, i) => (
             <div key={i}>
-              <div className="px-2 text-xs uppercase text-muted-foreground">{s.title}</div>
+              <div className="px-2 text-xs uppercase tracking-[0.14em] text-cyan-200/75">{s.title}</div>
               <ul className="mt-1 space-y-1">
                 {s.channels
                   .filter((c) => c.name.toLowerCase().includes(channelQuery.trim().toLowerCase()))
@@ -130,7 +130,7 @@ export default function ChannelSidebar({ guildId, activeChannelId }: { guildId?:
                   return (
                   <li
                     key={c.id}
-                    className={`flex cursor-pointer items-center gap-2 rounded-lg border px-2 py-1.5 ${c.name === activeChannelId ? 'border-primary/40 bg-primary/10 text-primary' : 'border-transparent hover:border-base-300 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground'}`}
+                    className={`flex cursor-pointer items-center gap-2 rounded-lg border px-2 py-1.5 ${c.name === activeChannelId ? 'border-cyan-300/45 bg-cyan-400/18 text-cyan-100' : 'border-transparent text-slate-200/85 hover:border-cyan-300/25 hover:bg-cyan-400/10 hover:text-cyan-50'}`}
                     onClick={() => {
                       if (guildId) {
                         setSelection({ channelId: c.name })
@@ -143,7 +143,7 @@ export default function ChannelSidebar({ guildId, activeChannelId }: { guildId?:
                       setEditChannel(c.name) 
                     }}
                   >
-                    <Hash className={`h-4 w-4 ${c.name === activeChannelId ? 'text-primary' : 'text-muted-foreground'}`} />
+                    <Hash className={`h-4 w-4 ${c.name === activeChannelId ? 'text-cyan-100' : 'text-slate-300/65'}`} />
                     <span className="text-sm flex-1 truncate">{c.name}</span>
                     {unread > 0 && (
                        <div className="badge badge-error badge-xs h-5 min-w-5 rounded-full px-1 text-[10px] font-bold text-white">
@@ -162,9 +162,9 @@ export default function ChannelSidebar({ guildId, activeChannelId }: { guildId?:
       </div>
       {menu && createPortal(
         <>
-          <div className="fixed inset-0 z-[200]" onClick={() => setMenu(null)} />
+          <div className="fixed inset-0 z-[320]" onClick={() => setMenu(null)} />
           <div
-            className="menu fixed z-[210] w-44 rounded-box border border-base-300 bg-base-100 p-1 shadow-xl"
+            className="menu fixed z-[330] w-44 rounded-box border border-cyan-300/20 bg-slate-950 p-1 text-slate-100 shadow-xl"
             style={{ left: menu.x, top: menu.y }}
             onClick={(e) => e.stopPropagation()}
           >
@@ -226,8 +226,8 @@ export default function ChannelSidebar({ guildId, activeChannelId }: { guildId?:
 
       {/* Create Category Modal */}
       {createCategoryOpen && createPortal(
-        <div className="fixed inset-0 z-[220] flex items-center justify-center bg-black/60 backdrop-blur-sm supports-backdrop-filter:bg-black/50 p-4" onClick={() => setCreateCategoryOpen(false)}>
-          <div className="w-[420px] rounded-2xl border border-base-300 bg-base-100 p-5 text-base-content shadow-2xl" onClick={(e) => e.stopPropagation()}>
+        <div className="fixed inset-0 z-[340] flex items-center justify-center bg-black/60 backdrop-blur-sm supports-backdrop-filter:bg-black/50 p-4" onClick={() => setCreateCategoryOpen(false)}>
+          <div className="w-[420px] rounded-2xl border border-cyan-300/20 bg-slate-950 p-5 text-slate-100 shadow-2xl" onClick={(e) => e.stopPropagation()}>
             <div className="text-lg font-semibold">Create Category</div>
             <div className="mt-2"><Input placeholder="Category Name" value={newCategoryName} onChange={(e) => setNewCategoryName(e.target.value)} /></div>
             <div className="mt-6 flex items-center justify-end gap-2">

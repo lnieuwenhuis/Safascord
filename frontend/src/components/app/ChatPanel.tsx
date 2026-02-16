@@ -482,19 +482,19 @@ export default function ChatPanel({ variant, channelName, channelId, guildName, 
   }
 
   return (
-    <div className="min-h-0 flex flex-1 flex-col bg-base-100/60 text-foreground backdrop-blur-sm">
-      <div className="flex h-12 items-center justify-between border-b border-base-300 px-4 shadow-sm">
+    <div className="min-h-0 flex flex-1 flex-col bg-slate-950/45 text-slate-100">
+      <div className="flex h-12 items-center justify-between border-b border-cyan-300/12 bg-slate-950/75 px-4 shadow-sm backdrop-blur-xl">
         <div className="flex items-center gap-2">
-          <Button variant="ghost" size="icon" className="md:hidden mr-2 -ml-2 text-muted-foreground" onClick={onMobileMenu}>
+          <Button variant="ghost" size="icon" className="md:hidden mr-2 -ml-2 text-slate-300/75" onClick={onMobileMenu}>
             <Menu className="h-5 w-5" />
           </Button>
           {variant === "guild" ? (
-            <Hash className="h-4 w-4 text-muted-foreground" />
+            <Hash className="h-4 w-4 text-cyan-200/70" />
           ) : (
-            <MessageSquare className="h-4 w-4 text-muted-foreground" />
+            <MessageSquare className="h-4 w-4 text-cyan-200/70" />
           )}
-          <div className="text-sm font-semibold">
-            {variant === "guild" && guildName ? <span className="text-muted-foreground">{guildName} · </span> : null}
+          <div className="text-sm font-semibold text-slate-100">
+            {variant === "guild" && guildName ? <span className="text-slate-300/65">{guildName} · </span> : null}
             {variant === "guild" ? `#${channelName}` : (dmUser ? (dmUser.displayName || dmUser.username) : "Direct Message")}
           </div>
         </div>
@@ -503,7 +503,7 @@ export default function ChatPanel({ variant, channelName, channelId, guildName, 
             <Button 
               variant="ghost" 
               size="icon" 
-              className={cn("text-muted-foreground", showUserList && "text-foreground bg-primary/10")} 
+              className={cn("text-slate-300/75", showUserList && "bg-cyan-400/20 text-cyan-100")} 
               onClick={onUserListToggle}
             >
               <Users className="h-5 w-5" />
@@ -511,7 +511,7 @@ export default function ChatPanel({ variant, channelName, channelId, guildName, 
           )}
         </div>
       </div>
-      <div ref={listRef} onScroll={onScroll} className="flex-1 min-h-0 overflow-y-auto p-4">
+      <div ref={listRef} onScroll={onScroll} className="flex-1 min-h-0 overflow-y-auto px-4 py-3">
         <div className="space-y-4">
           {(() => {
             type Group = { type: 'group'; user: string; userAvatar?: string; userId?: string; messages: { id: string; text: string; attachmentUrl?: string; ts?: string }[]; roleColor?: string }
@@ -561,7 +561,7 @@ export default function ChatPanel({ variant, channelName, channelId, guildName, 
                        <div className="absolute inset-0 flex items-center">
                           <div className="w-full border-t border-base-300" />
                        </div>
-                       <div className="relative bg-base-100 px-2 text-xs text-muted-foreground">
+                       <div className="relative bg-slate-950/95 px-2 text-xs text-slate-300/60">
                           {formatDateline(node.date)}
                        </div>
                     </div>
@@ -578,7 +578,7 @@ export default function ChatPanel({ variant, channelName, channelId, guildName, 
                 : getFullUrl(g.userAvatar)
 
               return (
-                <div key={first.id} className="group mt-[17px] flex items-start gap-3 -mx-4 px-4 py-0.5 hover:bg-base-200/45">
+                <div key={first.id} className="group mt-[17px] flex items-start gap-3 -mx-4 px-4 py-0.5 hover:bg-cyan-400/5">
                   <div 
                     className="h-8 w-8 rounded-full bg-primary/20 mt-0.5 overflow-hidden shrink-0 cursor-pointer hover:opacity-80"
                     onClick={() => g.userId && setSelectedUserId(g.userId)}
@@ -602,7 +602,7 @@ export default function ChatPanel({ variant, channelName, channelId, guildName, 
                       const isConsecutiveMention = isMentioned && prevIsMentioned
 
                       return (
-                        <div key={it.id} className={cn("relative group/msg hover:bg-black/5 -mx-4 px-4 py-0.5", idx > 0 && !isConsecutiveMention && "mt-0.5", isMentioned && "bg-blue-500/10 border-l-2 border-blue-500 hover:bg-blue-500/15 ml-[-3.75rem] pl-[3.75rem]")}>
+                        <div key={it.id} className={cn("relative group/msg -mx-4 px-4 py-0.5 hover:bg-cyan-400/5", idx > 0 && !isConsecutiveMention && "mt-0.5", isMentioned && "bg-blue-500/10 border-l-2 border-blue-500 hover:bg-blue-500/15 ml-[-3.75rem] pl-[3.75rem]")}>
                           {idx === 0 && (
                              <div className="flex items-baseline gap-2 mb-1">
                                <div 
@@ -612,7 +612,7 @@ export default function ChatPanel({ variant, channelName, channelId, guildName, 
                                >
                                  {isMe && user.displayName ? user.displayName : g.user}
                                </div>
-                               {first.ts && <div className="text-xs text-muted-foreground">{fmt(first.ts)}</div>}
+                               {first.ts && <div className="text-xs text-slate-300/60">{fmt(first.ts)}</div>}
                              </div>
                           )}
                           
@@ -660,7 +660,7 @@ export default function ChatPanel({ variant, channelName, channelId, guildName, 
                           )}
                           
                           {!isEditing && isMyMessage && (
-                            <div className="absolute right-4 top-0 z-10 hidden items-center rounded-lg border border-base-300 bg-base-100 shadow-sm group-hover/msg:flex">
+                            <div className="absolute right-4 top-0 z-10 hidden items-center rounded-lg border border-cyan-300/20 bg-slate-950/90 shadow-sm group-hover/msg:flex">
                                <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => startEditing(it.id, it.text)}>
                                   <Pencil className="h-3 w-3" />
                                </Button>
@@ -680,11 +680,11 @@ export default function ChatPanel({ variant, channelName, channelId, guildName, 
         </div>
       </div>
       {typing.size > 0 && (
-        <div className="px-4 pt-1 text-xs text-muted-foreground animate-pulse font-medium">{Array.from(typing).join(", ")} is typing…</div>
+        <div className="px-4 pt-1 text-xs text-cyan-200/80 animate-pulse font-medium">{Array.from(typing).join(", ")} is typing…</div>
       )}
-      <div className="flex h-auto min-h-16 flex-col justify-center border-t border-base-300 bg-base-100/80 px-3 py-2">
+      <div className="flex h-auto min-h-16 flex-col justify-center border-t border-cyan-300/12 bg-slate-950/78 px-3 py-2 backdrop-blur-xl">
         {selectedFile && (
-           <div className="mb-2 flex items-center gap-2 rounded-xl border border-base-300 bg-base-100 p-2">
+           <div className="mb-2 flex items-center gap-2 rounded-xl border border-cyan-300/20 bg-slate-900/75 p-2">
               {selectedFile.type.startsWith('image/') ? (
                  <img 
                     src={URL.createObjectURL(selectedFile)} 
@@ -714,8 +714,8 @@ export default function ChatPanel({ variant, channelName, channelId, guildName, 
           </Button>
           <div className="relative w-full">
             {showMentionMenu && filteredMembers.length > 0 && (
-               <div className="absolute bottom-full left-0 z-50 mb-2 w-64 overflow-hidden rounded-xl border border-base-300 bg-base-100 shadow-lg">
-                 <div className="bg-base-200/65 px-3 py-2 text-xs font-bold text-muted-foreground">MEMBERS MATCHING @{mentionQuery}</div>
+               <div className="absolute bottom-full left-0 z-50 mb-2 w-64 overflow-hidden rounded-xl border border-cyan-300/20 bg-slate-950/95 shadow-lg">
+                 <div className="bg-slate-900/80 px-3 py-2 text-xs font-bold text-cyan-200/80">MEMBERS MATCHING @{mentionQuery}</div>
                  {filteredMembers.map((m, i) => (
                    <button
                      key={m.id}
@@ -743,7 +743,7 @@ export default function ChatPanel({ variant, channelName, channelId, guildName, 
                </div>
             )}
             <Input
-              className="border-base-300 bg-base-100"
+              className="border-cyan-300/20 bg-slate-900/70"
               placeholder={!effectiveCanSend ? "You do not have permission to send messages in this channel." : (variant === "guild" ? `Message #${channelName}` : `Message ${localDmUser ? (localDmUser.displayName || localDmUser.username) : "Direct Message"}`)}
               disabled={!effectiveCanSend || isUploading}
               value={text}
@@ -770,7 +770,7 @@ export default function ChatPanel({ variant, channelName, channelId, guildName, 
             onKeyDown={handleKeyDown}
           />
           </div>
-          <Button variant="brand" onClick={send} disabled={!effectiveCanSend}>Send</Button>
+          <Button onClick={send} disabled={!effectiveCanSend}>Send</Button>
         </div>
         {text.length > 4000 && (
           <div className={cn("text-xs text-right px-1 mt-1", text.length >= 5000 ? "text-destructive" : "text-muted-foreground")}>

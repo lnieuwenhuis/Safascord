@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react"
 import { useNavigate } from "react-router-dom"
-import { Check, MessageSquare, Search, UserPlus, X } from "lucide-react"
+import { Check, Menu, MessageSquare, Search, UserPlus, Users, X } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { api } from "@/lib/api"
@@ -10,6 +10,13 @@ import AddFriendModal from "./AddFriendModal"
 
 type Tab = "online" | "all" | "pending" | "dms"
 
+interface OverviewPanelProps {
+  variant?: "guild" | "dm"
+  onMobileMenu?: () => void
+  onUserListToggle?: () => void
+  showUserList?: boolean
+}
+
 function statusDot(status?: string) {
   if (status === "online") return "bg-green-500"
   if (status === "idle") return "bg-yellow-500"
@@ -17,7 +24,12 @@ function statusDot(status?: string) {
   return "bg-gray-500"
 }
 
-export default function OverviewPanel() {
+export default function OverviewPanel({
+  variant = "dm",
+  onMobileMenu,
+  onUserListToggle,
+  showUserList = false,
+}: OverviewPanelProps) {
   const { token } = useAuth()
   const navigate = useNavigate()
   const [activeTab, setActiveTab] = useState<Tab>("online")
@@ -109,10 +121,15 @@ export default function OverviewPanel() {
   }
 
   return (
-    <div className="flex h-full flex-1 flex-col bg-background/70 text-foreground">
-      <div className="shrink-0 border-b border-border bg-base-100/70 px-4 py-3 shadow-sm backdrop-blur-sm">
+    <div className="flex h-full flex-1 flex-col bg-slate-950/40 text-slate-100">
+      <div className="shrink-0 border-b border-cyan-300/12 bg-slate-950/72 px-4 py-3 shadow-sm backdrop-blur-xl">
         <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
           <div className="flex flex-wrap items-center gap-2 text-sm font-semibold">
+            {onMobileMenu ? (
+              <Button variant="ghost" size="icon" className="mr-1 h-8 w-8 md:hidden" onClick={onMobileMenu}>
+                <Menu className="h-4 w-4" />
+              </Button>
+            ) : null}
             <span className="mr-1 flex items-center gap-2 text-base-content/75">
               <UserPlus className="h-4 w-4" />
               Friends
@@ -126,6 +143,16 @@ export default function OverviewPanel() {
             <Button variant="default" size="sm" className="rounded-lg bg-emerald-600 text-white hover:bg-emerald-500" onClick={() => setAddFriendOpen(true)}>
               Add Friend
             </Button>
+            {variant === "guild" && onUserListToggle ? (
+              <Button
+                variant={showUserList ? "secondary" : "ghost"}
+                size="icon"
+                className="h-8 w-8 md:hidden"
+                onClick={onUserListToggle}
+              >
+                <Users className="h-4 w-4" />
+              </Button>
+            ) : null}
           </div>
 
           <div className="relative w-full md:w-72">

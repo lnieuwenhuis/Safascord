@@ -1,89 +1,73 @@
+import { Compass, Search, Users } from "lucide-react"
+import { Link } from "react-router-dom"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Search } from "lucide-react"
-import { Link } from "react-router-dom"
 
-const servers = Array.from({ length: 12 }).map((_, i) => ({ 
-  id: i, 
-  name: `Community ${i + 1}`,
-  description: "A great place to hang out and chat with friends about various topics.",
-  members: 1000 + i * 123
+const servers = Array.from({ length: 12 }).map((_, index) => ({
+  id: index,
+  name: `Community ${index + 1}`,
+  description: "A focused server for builders, operators and creators.",
+  members: 1200 + index * 147,
 }))
 
 export default function Discover() {
   return (
-    <div className="flex min-h-dvh flex-col bg-background text-foreground">
-      <header className="sticky top-0 z-50 w-full border-b border-border/40 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-        <div className="mx-auto flex h-14 max-w-7xl items-center justify-between px-6">
+    <div className="safas-page flex min-h-dvh flex-col">
+      <header className="sticky top-0 z-50 border-b border-cyan-300/15 bg-slate-950/78 backdrop-blur-xl">
+        <div className="mx-auto flex h-16 w-full max-w-7xl items-center justify-between px-4 md:px-8">
+          <Link className="text-2xl font-extrabold text-slate-100" to="/">safascord</Link>
           <div className="flex items-center gap-2">
-            <Link to="/" className="flex items-center gap-2">
-              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-primary-foreground font-bold">
-                D
-              </div>
-              <span className="text-lg font-bold tracking-tight">Discord Clone</span>
-            </Link>
-          </div>
-          <div className="flex items-center gap-4">
             <Link to="/auth">
-              <Button variant="ghost" size="sm">
-                Sign In
-              </Button>
+              <Button variant="ghost" size="sm">Sign in</Button>
             </Link>
             <Link to="/channels/@me">
-              <Button size="sm">
-                Open App
-              </Button>
+              <Button size="sm">Open app</Button>
             </Link>
           </div>
         </div>
       </header>
 
-      <main className="flex-1">
-        <section className="relative overflow-hidden py-16 md:py-24">
-           <div className="absolute inset-0 -z-10 bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-primary/10 via-background to-background" />
-           <div className="mx-auto max-w-4xl px-6 text-center">
-             <h1 className="mb-6 text-3xl font-extrabold tracking-tight sm:text-4xl md:text-5xl">
-               Find your community
-             </h1>
-             <p className="mb-8 text-lg text-muted-foreground">
-               From gaming, to music, to learning, there's a place for you.
-             </p>
-             <div className="relative mx-auto max-w-xl">
-               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-               <Input 
-                 className="h-12 border-border/50 bg-background/50 pl-10 backdrop-blur-sm focus-visible:ring-primary" 
-                 placeholder="Explore communities..." 
-               />
-             </div>
-           </div>
+      <main className="mx-auto w-full max-w-7xl flex-1 px-4 pb-16 pt-10 md:px-8">
+        <section className="safas-panel p-7 md:p-10">
+          <p className="safas-label mb-4">Discover Servers</p>
+          <h1 className="text-balance text-4xl font-extrabold text-slate-100 md:text-5xl">
+            Find your next community
+          </h1>
+          <p className="mt-4 max-w-2xl text-slate-300/78">
+            Browse curated servers around product, software, gaming, and niche communities.
+          </p>
+          <label className="mt-7 flex h-12 items-center gap-3 rounded-xl border border-cyan-300/20 bg-slate-950/55 px-4">
+            <Search className="h-4 w-4 text-cyan-200/80" />
+            <Input
+              className="h-9 border-none bg-transparent px-0 focus-visible:ring-0"
+              placeholder="Search communities..."
+            />
+          </label>
         </section>
 
-        <section className="mx-auto max-w-7xl px-6 pb-20">
-          <h2 className="mb-6 text-xl font-semibold">Featured Communities</h2>
-          <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-            {servers.map(s => (
-              <div key={s.id} className="group overflow-hidden rounded-lg border border-border bg-card transition-all hover:-translate-y-1 hover:shadow-lg">
-                <div className="h-24 bg-gradient-to-br from-primary/20 to-primary/5" />
-                <div className="relative p-4 pt-0">
-                  <div className="absolute -top-6 left-4 h-12 w-12 rounded-xl border-4 border-card bg-primary text-primary-foreground flex items-center justify-center font-bold text-lg shadow-sm">
-                    {s.name[0]}
-                  </div>
-                  <div className="mt-8">
-                    <h3 className="font-semibold truncate">{s.name}</h3>
-                    <p className="mt-2 line-clamp-2 text-xs text-muted-foreground">
-                      {s.description}
-                    </p>
-                    <div className="mt-4 flex items-center justify-between">
-                      <span className="text-xs text-muted-foreground">{s.members.toLocaleString()} Members</span>
-                      <Button variant="secondary" size="sm" className="h-7 text-xs">
-                        Join
-                      </Button>
-                    </div>
-                  </div>
+        <section className="mt-8 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+          {servers.map((server) => (
+            <article key={server.id} className="safas-panel p-5">
+              <div className="mb-4 flex items-center justify-between">
+                <div className="grid h-11 w-11 place-items-center rounded-xl border border-cyan-300/25 bg-cyan-400/15 text-cyan-100">
+                  {server.name.slice(0, 2).toUpperCase()}
+                </div>
+                <div className="inline-flex items-center gap-1 rounded-full border border-cyan-300/20 px-2 py-1 text-[11px] uppercase tracking-[0.16em] text-cyan-200/80">
+                  <Compass className="h-3 w-3" />
+                  Featured
                 </div>
               </div>
-            ))}
-          </div>
+              <h2 className="text-xl font-bold text-slate-100">{server.name}</h2>
+              <p className="mt-2 text-sm text-slate-300/72">{server.description}</p>
+              <div className="mt-5 flex items-center justify-between">
+                <div className="inline-flex items-center gap-2 text-sm text-slate-200/80">
+                  <Users className="h-4 w-4 text-cyan-200/85" />
+                  {server.members.toLocaleString()} members
+                </div>
+                <Button size="sm" variant="outline">Join</Button>
+              </div>
+            </article>
+          ))}
         </section>
       </main>
     </div>

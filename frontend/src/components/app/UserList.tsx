@@ -29,11 +29,11 @@ export default function UserList({ serverId, channelId, className }: { serverId?
 
   return (
     <>
-      <aside className={cn("flex h-full flex-col border-l border-sidebar-border bg-sidebar/95 p-3 text-sidebar-foreground backdrop-blur-sm", className)}>
+      <aside className={cn("flex h-full flex-col border-l border-cyan-300/15 bg-slate-950/86 p-3 text-slate-100 backdrop-blur-xl", className)}>
         <div className="flex-1 space-y-6 overflow-y-auto min-h-0">
           {groups.map((g, idx) => (
             <div key={idx}>
-              <div className="text-xs font-bold uppercase text-muted-foreground mb-2">{g.name} — {g.users.length}</div>
+              <div className="mb-2 text-xs font-bold uppercase tracking-[0.14em] text-cyan-200/72">{g.name} — {g.users.length}</div>
               <ul className="space-y-0.5">
                 {g.users.map((u) => {
                   // Check if this is the current user to show live updates
@@ -50,7 +50,7 @@ export default function UserList({ serverId, channelId, className }: { serverId?
                   return (
                     <li 
                       key={u.username} 
-                      className="group flex cursor-pointer items-center gap-2 rounded-lg border border-transparent px-2 py-1.5 opacity-90 hover:border-base-300 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground hover:opacity-100"
+                      className="group flex cursor-pointer items-center gap-2 rounded-lg border border-transparent px-2 py-1.5 opacity-90 hover:border-cyan-300/25 hover:bg-cyan-400/10 hover:text-cyan-50 hover:opacity-100"
                       onClick={(e) => {
                         setSelectedUserId(userId)
                         setSelectedUserRect(e.currentTarget.getBoundingClientRect())
@@ -67,7 +67,7 @@ export default function UserList({ serverId, channelId, className }: { serverId?
                            )}
                         </div>
                         <div className={cn(
-                          "absolute bottom-0 right-0 h-3.5 w-3.5 rounded-full border-[3px] border-sidebar flex items-center justify-center",
+                          "absolute bottom-0 right-0 h-3.5 w-3.5 rounded-full border-[3px] border-slate-900 flex items-center justify-center",
                           statusColor(status)
                         )}>
                           {status === 'dnd' && <div className="h-0.5 w-1.5 bg-white" />}

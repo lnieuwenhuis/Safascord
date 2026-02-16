@@ -24,8 +24,8 @@ export default function UserSettings({ open, onClose }: { open: boolean; onClose
   if (!open) return null
   return createPortal(
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm supports-[backdrop-filter]:bg-black/50 p-4" onClick={onClose}>
-      <div role="dialog" aria-modal="true" className="relative grid w-[980px] max-h-[92dvh] grid-cols-[260px_1fr] overflow-hidden rounded-lg border border-border bg-background shadow-xl text-foreground" onClick={(e) => e.stopPropagation()}>
-        <aside className="flex h-full flex-col border-r border-border bg-muted/30 p-3">
+      <div role="dialog" aria-modal="true" className="relative grid w-[980px] max-h-[92dvh] grid-cols-[260px_1fr] overflow-hidden rounded-2xl border border-cyan-300/20 bg-slate-950 shadow-xl text-slate-100" onClick={(e) => e.stopPropagation()}>
+        <aside className="flex h-full flex-col border-r border-cyan-300/15 bg-slate-900/65 p-3">
           <div className="mb-2 text-xs uppercase text-muted-foreground">User Settings</div>
           <nav className="space-y-1">
             <button className={`w-full rounded px-2 py-1 text-left text-sm hover:bg-accent hover:text-accent-foreground ${section === 'account' ? 'bg-accent text-accent-foreground' : ''}`} onClick={() => setSection('account')}>My Account</button>
@@ -44,7 +44,7 @@ export default function UserSettings({ open, onClose }: { open: boolean; onClose
           </div>
         </aside>
         <main className="flex h-full flex-col">
-          <header className="flex items-center justify-between border-b border-border p-3">
+          <header className="flex items-center justify-between border-b border-cyan-300/15 p-3">
             <div className="text-lg font-semibold">{sectionLabel(section)}</div>
             <button className="rounded p-1 text-muted-foreground hover:bg-accent hover:text-accent-foreground" aria-label="Close" onClick={onClose}>
               <X className="h-4 w-4" />
@@ -135,7 +135,7 @@ export default function UserSettings({ open, onClose }: { open: boolean; onClose
               </div>
             )}
           </div>
-          <footer className="border-t border-border p-3">
+          <footer className="border-t border-cyan-300/15 p-3">
             <div className="flex items-center justify-end gap-2">
               <Button variant="outline" onClick={onClose}>Close</Button>
               <Button variant="brand" disabled={saving} onClick={async () => {

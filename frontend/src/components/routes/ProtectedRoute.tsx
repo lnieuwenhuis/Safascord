@@ -8,8 +8,8 @@ export default function ProtectedRoute({ children }: { children: React.ReactNode
   if (isLoading) {
     // A simple loading spinner or splash screen could go here
     return (
-      <div className="flex h-dvh w-full items-center justify-center bg-[#09090b] text-white">
-        <div className="h-8 w-8 animate-spin rounded-full border-4 border-white/20 border-t-white"></div>
+      <div className="safas-page flex h-dvh w-full items-center justify-center">
+        <div className="h-8 w-8 animate-spin rounded-full border-4 border-cyan-200/25 border-t-cyan-200" />
       </div>
     )
   }

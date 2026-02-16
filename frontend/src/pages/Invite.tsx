@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react"
 import { useNavigate, useParams } from "react-router-dom"
+import { ArrowRight, Users } from "lucide-react"
 import { api, getFullUrl } from "@/lib/api"
 import { Button } from "@/components/ui/button"
 import type { InviteInfo } from "@/types"
@@ -9,37 +10,38 @@ export default function Invite() {
   const navigate = useNavigate()
   const [invite, setInvite] = useState<InviteInfo | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading] = useState(Boolean(code))
   const token = typeof window !== "undefined" ? localStorage.getItem("token") : null
 
   useEffect(() => {
-    if (!code) {
-        // eslint-disable-next-line react-hooks/set-state-in-effect
-        setError("Invalid invite code")
-        setLoading(false)
-        return
-    }
+    if (!code) return
+
     api.inviteInfo(code)
-      .then(r => {
-        if (r.error) {
-            setError(r.error)
-        } else if (r.code) {
-            // Map backend response to InviteInfo structure
-            const s = (r as { server: { id: string; name: string; iconUrl?: string; bannerUrl?: string } }).server
-            setInvite({
-                code: r.code,
-                serverId: s?.id,
-                serverName: s?.name,
-                serverIcon: s?.iconUrl,
-                serverBanner: s?.bannerUrl,
-                expired: false,
-                full: false
-            })
-        } else if (r.invite) {
-            setInvite(r.invite)
-        } else {
-            setError("Invite not found or expired")
+      .then((response) => {
+        if (response.error) {
+          setError(response.error)
+          return
         }
+
+        if (response.code && response.server) {
+          setInvite({
+            code: response.code,
+            serverId: response.server.id,
+            serverName: response.server.name,
+            serverIcon: response.server.iconUrl,
+            serverBanner: response.server.bannerUrl,
+            expired: false,
+            full: false,
+          })
+          return
+        }
+
+        if (response.invite) {
+          setInvite(response.invite)
+          return
+        }
+
+        setError("Invite not found or expired")
       })
       .catch(() => setError("Failed to load invite"))
       .finally(() => setLoading(false))
@@ -47,62 +49,101 @@ export default function Invite() {
 
   const handleJoin = async () => {
     if (!token) {
-        navigate("/auth")
-        return
+      navigate("/auth")
+      return
     }
     if (!invite) return
+
     try {
-      const res = await api.acceptInvite(token, invite.code)
-      if (res.success || res.ok) {
+      const response = await api.acceptInvite(token, invite.code)
+      if (response.success || response.ok) {
         navigate(`/server/${invite.serverId}`)
       } else {
-        setError(res.error || "Failed to join")
+        setError(response.error || "Failed to join server")
       }
     } catch {
-      setError("Failed to join")
+      setError("Failed to join server")
     }
+  }
+
+  if (!code) {
+    return (
+      <div className="safas-page flex items-center justify-center px-4">
+        <div className="safas-panel w-full max-w-md p-7 text-center">
+          <p className="safas-label mb-3">Invite Error</p>
+          <h1 className="text-2xl font-bold text-slate-100">Invalid invite code</h1>
+          <p className="mt-3 text-slate-300/75">The link is missing a valid invite code.</p>
+          <div className="mt-7">
+            <Button onClick={() => navigate("/")} variant="outline">Back to home</Button>
+          </div>
+        </div>
+      </div>
+    )
   }
 
   if (loading) {
     return (
-        <div className="flex h-screen w-full items-center justify-center bg-[#313338] text-white">
-            Loading...
-        </div>
+      <div className="safas-page flex items-center justify-center">
+        <div className="safas-panel px-6 py-5 text-sm text-slate-200">Loading invite...</div>
+      </div>
     )
   }
 
   if (error) {
     return (
-        <div className="flex h-screen w-full items-center justify-center bg-[#313338] text-white flex-col gap-4">
-            <div className="text-xl font-bold text-destructive">Error</div>
-            <div>{error}</div>
-            <Button onClick={() => navigate("/")} variant="secondary">Go Home</Button>
+      <div className="safas-page flex items-center justify-center px-4">
+        <div className="safas-panel w-full max-w-md p-7 text-center">
+          <p className="safas-label mb-3">Invite Error</p>
+          <h1 className="text-2xl font-bold text-slate-100">Unable to open invite</h1>
+          <p className="mt-3 text-slate-300/75">{error}</p>
+          <div className="mt-7">
+            <Button onClick={() => navigate("/")} variant="outline">Back to home</Button>
+          </div>
         </div>
+      </div>
     )
   }
 
   return (
-    <div className="flex h-screen w-full items-center justify-center bg-[#313338] text-white relative overflow-hidden">
-      {invite?.serverBanner && (
-         <div className="absolute inset-0 z-0">
-            <img src={getFullUrl(invite.serverBanner) || ""} alt="" className="w-full h-full object-cover opacity-20 blur-sm" />
-         </div>
-      )}
-      <div className="w-full max-w-md rounded-lg bg-[#2b2d31] p-8 shadow-xl text-center z-10 relative">
+    <div className="safas-page relative flex min-h-dvh items-center justify-center overflow-hidden px-4 py-10">
+      {invite?.serverBanner ? (
+        <div className="absolute inset-0 -z-10">
+          <img
+            src={getFullUrl(invite.serverBanner) || ""}
+            alt=""
+            className="h-full w-full object-cover opacity-30 blur-2xl"
+          />
+        </div>
+      ) : null}
+
+      <div className="safas-panel w-full max-w-lg p-8 text-center">
+        <p className="safas-label mb-4">Server Invite</p>
         {invite?.serverIcon ? (
-           <div className="mx-auto mb-4 h-24 w-24 rounded-3xl overflow-hidden">
-              <img src={getFullUrl(invite.serverIcon) || ""} alt={invite.serverName} className="h-full w-full object-cover" />
-           </div>
+          <div className="mx-auto mb-4 h-20 w-20 overflow-hidden rounded-2xl border border-cyan-300/30">
+            <img src={getFullUrl(invite.serverIcon) || ""} alt={invite.serverName} className="h-full w-full object-cover" />
+          </div>
         ) : (
-           <div className="mx-auto mb-4 h-24 w-24 rounded-3xl bg-[#5865f2] flex items-center justify-center text-3xl font-bold">
-              {invite?.serverName.substring(0, 2).toUpperCase()}
-           </div>
+          <div className="mx-auto mb-4 grid h-20 w-20 place-items-center rounded-2xl border border-cyan-300/30 bg-cyan-400/15 text-xl font-bold text-cyan-100">
+            {invite?.serverName.slice(0, 2).toUpperCase()}
+          </div>
         )}
-        <div className="mb-2 text-sm font-bold uppercase text-[#949ba4]">You've been invited to join</div>
-        <div className="mb-6 text-2xl font-bold">{invite?.serverName}</div>
-        <div className="flex justify-center gap-4">
-            <Button onClick={() => navigate("/")} variant="secondary" className="bg-[#313338] hover:bg-[#3f4147] text-white">No, thanks</Button>
-            <Button onClick={handleJoin} variant="brand" className="bg-[#5865f2] hover:bg-[#4752c4] text-white">Join Server</Button>
+
+        <h1 className="text-3xl font-extrabold text-slate-100">{invite?.serverName}</h1>
+        <div className="mt-3 inline-flex items-center gap-2 rounded-full border border-cyan-300/25 bg-cyan-400/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em] text-cyan-200/90">
+          <Users className="h-3.5 w-3.5" />
+          You were invited
+        </div>
+
+        <p className="mt-4 text-slate-300/75">
+          Join this server to start chatting, browsing channels and collaborating in realtime.
+        </p>
+
+        <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
+          <Button variant="outline" onClick={() => navigate("/")}>No thanks</Button>
+          <Button onClick={handleJoin}>
+            Join Server
+            <ArrowRight className="ml-1 h-4 w-4" />
+          </Button>
         </div>
       </div>
     </div>

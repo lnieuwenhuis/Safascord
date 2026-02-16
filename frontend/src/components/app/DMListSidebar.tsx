@@ -19,14 +19,14 @@ export default function DMListSidebar() {
   }, [token])
 
   return (
-    <aside className="flex h-dvh w-full flex-col border-r border-sidebar-border bg-sidebar/95 text-sidebar-foreground backdrop-blur-sm">
+    <aside className="flex h-dvh w-full flex-col bg-slate-950/86 text-slate-100 backdrop-blur-xl">
       <div className="px-3 py-3">
-        <div className="mb-3 rounded-xl border border-base-300/70 bg-base-100/60 px-3 py-2 text-sm font-semibold">Direct Messages</div>
+        <div className="mb-3 rounded-xl border border-cyan-300/20 bg-slate-900/70 px-3 py-2 text-sm font-semibold">Direct Messages</div>
         <ul className="max-h-full space-y-1">
           {dms.map((dm) => (
             <li
               key={dm.id}
-              className="flex cursor-pointer items-center gap-2 rounded-lg border border-transparent px-2 py-1.5 hover:border-base-300 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+              className="flex cursor-pointer items-center gap-2 rounded-lg border border-transparent px-2 py-1.5 text-slate-200/85 hover:border-cyan-300/30 hover:bg-cyan-400/10 hover:text-cyan-50"
               onClick={() => navigate(`/channels/@me/${dm.id}`)}
             >
               <div className="relative h-6 w-6">
@@ -37,7 +37,7 @@ export default function DMListSidebar() {
                         {dm.user.displayName?.[0] || dm.user.username[0]}
                     </span>
                  )}
-                 <span className={`absolute bottom-0 right-0 h-2 w-2 rounded-full border border-sidebar-background ${dm.user.status === 'online' ? 'bg-green-500' : 'bg-gray-500'}`} />
+                 <span className={`absolute bottom-0 right-0 h-2 w-2 rounded-full border border-slate-900 ${dm.user.status === 'online' ? 'bg-green-500' : 'bg-gray-500'}`} />
               </div>
               <span className="text-sm truncate">{dm.user.displayName || dm.user.username}</span>
             </li>

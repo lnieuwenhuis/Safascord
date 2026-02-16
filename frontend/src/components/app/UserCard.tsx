@@ -427,13 +427,23 @@ export default function UserCard() {
     setShowProfile((prev) => !prev)
   }
 
+  const isCompactViewport = typeof window !== "undefined" && window.innerWidth < 768
+
   const profileLeft = (() => {
-    if (typeof window === "undefined" || !profileAnchorRect) return 72
+    if (typeof window === "undefined") return 72
+    if (isCompactViewport) {
+      return Math.max(12, (window.innerWidth - 300) / 2)
+    }
+    if (!profileAnchorRect) return 72
     return Math.min(Math.max(72, profileAnchorRect.left), window.innerWidth - 316)
   })()
 
   const profileTop = (() => {
-    if (typeof window === "undefined" || !profileAnchorRect) return 96
+    if (typeof window === "undefined") return 96
+    if (isCompactViewport) {
+      return Math.max(18, (window.innerHeight - 420) / 2)
+    }
+    if (!profileAnchorRect) return 96
     const cardHeight = 420
     const preferredTop = profileAnchorRect.top - cardHeight - 12
     if (preferredTop >= 16) return preferredTop
@@ -442,7 +452,7 @@ export default function UserCard() {
 
   return (
     <>
-      <div className="relative flex h-16 items-center justify-between border-t border-sidebar-border bg-sidebar px-2">
+      <div className="relative flex h-16 items-center justify-between border-t border-cyan-300/15 bg-slate-950/95 px-2">
         {/* User Card Trigger */}
         <div 
           ref={triggerRef}
@@ -501,9 +511,9 @@ export default function UserCard() {
 
       {showProfile && createPortal(
         <>
-          <div className="fixed inset-0 z-[180]" onClick={() => setShowProfile(false)} />
+          <div className="fixed inset-0 z-[450]" onClick={() => setShowProfile(false)} />
           <ProfileCard
-            className="fixed z-[190] animate-in fade-in zoom-in-95 duration-200"
+            className="fixed z-[460] animate-in fade-in zoom-in-95 duration-200"
             style={{ left: `${profileLeft}px`, top: `${profileTop}px` }}
             displayName={displayName}
             username={username}
@@ -524,11 +534,11 @@ export default function UserCard() {
 
       {/* Edit Profile Modal */}
       {editProfileOpen && createPortal(
-        <div className="fixed inset-0 z-[220] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in duration-200">
-          <div className="flex h-[85vh] w-[800px] overflow-hidden rounded-lg bg-card shadow-2xl animate-in zoom-in-95 duration-200 flex-col md:flex-row">
+        <div className="fixed inset-0 z-[500] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+          <div className="flex h-[85vh] w-full max-w-[960px] overflow-hidden rounded-2xl border border-cyan-300/20 bg-slate-950 shadow-2xl animate-in zoom-in-95 duration-200 flex-col md:flex-row">
             
             {/* Sidebar / Form */}
-            <div className="flex-1 overflow-y-auto p-6 md:w-1/2">
+            <div className="flex-1 overflow-y-auto p-6 md:w-1/2 bg-slate-950">
                <h2 className="text-2xl font-bold mb-6">Edit Profile</h2>
                
                <div className="space-y-6">
@@ -640,7 +650,7 @@ export default function UserCard() {
             </div>
 
             {/* Preview Section */}
-            <div className="bg-muted/30 p-6 md:w-1/2 flex flex-col items-center justify-center border-l border-border relative">
+            <div className="bg-slate-900/80 p-6 md:w-1/2 flex flex-col items-center justify-center border-l border-cyan-300/15 relative">
                <div className="absolute top-4 right-4 text-xs font-bold uppercase text-muted-foreground">Preview</div>
                
                <ProfileCard
