@@ -2,22 +2,26 @@ import UserCard from "./UserCard"
 import { useNavigate } from "react-router-dom"
 import { setSelection } from "@/hooks/useSelection"
 import { Hash, Plus, Search } from "lucide-react"
-import { useEffect, useState } from "react"
+import { useCallback, useEffect, useState } from "react"
 import { api, getFullUrl } from "@/lib/api"
 import ConfirmDialog from "./ConfirmDialog"
 import { Input } from "@/components/ui/input"
-import type { Server, ChannelSection } from "@/types"
 import ChannelModal from "./ChannelModal"
 import { useNotifications } from "../NotificationProvider"
 import { useAuth } from "@/hooks/useAuth"
 import { createPortal } from "react-dom"
+import { useAppCacheStore } from "@/stores/cacheStore"
 
 export default function ChannelSidebar({ guildId, activeChannelId }: { guildId?: string, activeChannelId?: string }) {
   const navigate = useNavigate()
   const { notifications } = useNotifications()
   const { token } = useAuth()
-  const [sections, setSections] = useState<ChannelSection[]>([])
-  const [server, setServer] = useState<Server | null>(null)
+  const cachedServers = useAppCacheStore((state) => state.servers)
+  const cachedSections = useAppCacheStore((state) => (guildId ? state.channelsByServer[guildId] : undefined))
+  const setCachedServers = useAppCacheStore((state) => state.setServers)
+  const setCachedServerChannels = useAppCacheStore((state) => state.setServerChannels)
+  const sections = cachedSections || []
+  const server = (cachedServers || []).find((x) => String(x.id) === String(guildId || "")) || null
   const [menu, setMenu] = useState<{ channel: string; x: number; y: number } | null>(null)
   
   // Modals
@@ -34,29 +38,29 @@ export default function ChannelSidebar({ guildId, activeChannelId }: { guildId?:
   const [channelQuery, setChannelQuery] = useState("")
   
   const authToken = token || (typeof window !== "undefined" ? localStorage.getItem("token") || "" : "")
-  
-  useEffect(() => {
-    loadChannels()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [guildId, authToken])
-  
-  const loadChannels = () => {
+
+  const loadChannels = useCallback(() => {
+    if (!guildId || !authToken) return
     api.channels(guildId, authToken).then((r) => {
-      setSections(r.sections)
-    }).catch(() => setSections([
-      { title: "Admin", channels: [{ id: "1", name: "announcements", type: "text" }, { id: "2", name: "rulebook", type: "text" }] },
-      { title: "Staff", channels: [{ id: "3", name: "roles", type: "text" }, { id: "4", name: "moderation", type: "text" }] },
-      { title: "FST", channels: [{ id: "5", name: "chat-room", type: "text" }, { id: "6", name: "memes", type: "text" }, { id: "7", name: "media", type: "text" }, { id: "8", name: "real-f1", type: "text" }, { id: "9", name: "pets", type: "text" }] },
-    ]))
-  }
+      setCachedServerChannels(guildId, r.sections)
+    }).catch(() => {})
+  }, [guildId, authToken, setCachedServerChannels])
 
   useEffect(() => {
-    if (!guildId || !authToken) return
+    loadChannels()
+  }, [loadChannels])
+
+  useEffect(() => {
+    if (!authToken) return
+    let cancelled = false
     api.servers(authToken).then((r) => {
-      const s = r.servers.find((x) => String(x.id) === String(guildId))
-      setServer(s || null)
-    }).catch(() => setServer(null))
-  }, [guildId, authToken])
+      if (cancelled) return
+      setCachedServers(r.servers)
+    }).catch(() => {})
+    return () => {
+      cancelled = true
+    }
+  }, [authToken, setCachedServers])
 
   const handleEditChannel = async (channelName: string) => {
      if (!guildId) return
@@ -130,11 +134,11 @@ export default function ChannelSidebar({ guildId, activeChannelId }: { guildId?:
                   return (
                   <li
                     key={c.id}
-                    className={`flex cursor-pointer items-center gap-2 rounded-lg border px-2 py-1.5 ${c.name === activeChannelId ? 'border-cyan-300/45 bg-cyan-400/18 text-cyan-100' : 'border-transparent text-slate-200/85 hover:border-cyan-300/25 hover:bg-cyan-400/10 hover:text-cyan-50'}`}
+                    className={`flex cursor-pointer items-center gap-2 rounded-lg border px-2 py-1.5 ${c.id === activeChannelId ? 'border-cyan-300/45 bg-cyan-400/18 text-cyan-100' : 'border-transparent text-slate-200/85 hover:border-cyan-300/25 hover:bg-cyan-400/10 hover:text-cyan-50'}`}
                     onClick={() => {
                       if (guildId) {
-                        setSelection({ channelId: c.name })
-                        navigate(`/server/${guildId}/channel/${c.name}`)
+                        setSelection({ channelId: c.id })
+                        navigate(`/server/${guildId}/channel/${c.id}`)
                       }
                     }}
                     onContextMenu={(e) => { 
@@ -143,7 +147,7 @@ export default function ChannelSidebar({ guildId, activeChannelId }: { guildId?:
                       setEditChannel(c.name) 
                     }}
                   >
-                    <Hash className={`h-4 w-4 ${c.name === activeChannelId ? 'text-cyan-100' : 'text-slate-300/65'}`} />
+                    <Hash className={`h-4 w-4 ${c.id === activeChannelId ? 'text-cyan-100' : 'text-slate-300/65'}`} />
                     <span className="text-sm flex-1 truncate">{c.name}</span>
                     {unread > 0 && (
                        <div className="badge badge-error badge-xs h-5 min-w-5 rounded-full px-1 text-[10px] font-bold text-white">

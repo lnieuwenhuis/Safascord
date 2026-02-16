@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useEffect, useState, useCallback } from "react"
 import { api } from "../lib/api"
 import type { User } from "../types"
+import { useAppCacheStore } from "@/stores/cacheStore"
 
 interface AuthContextType {
   isAuthenticated: boolean
@@ -16,6 +17,7 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
+  const setCacheOwner = useAppCacheStore((state) => state.setOwner)
   const [user, setUser] = useState<User | null>(null)
   const [isAuthenticated, setIsAuthenticated] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
@@ -94,6 +96,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     window.addEventListener("auth:unauthorized", handleUnauthorized)
     return () => window.removeEventListener("auth:unauthorized", handleUnauthorized)
   }, [logout])
+
+  useEffect(() => {
+    setCacheOwner(user?.id)
+  }, [user?.id, setCacheOwner])
 
   // Periodic session check (every 60s)
   useEffect(() => {

@@ -51,7 +51,7 @@ export default function AppShell({
   }
 
   const Sidebar = variant === "dm" ? DMListSidebar : ChannelSidebar
-  const sidebarProps = variant === "dm" ? {} : { guildId, activeChannelId: channelName }
+  const sidebarProps = variant === "dm" ? {} : { guildId, activeChannelId: channelId }
   const resolvedShowUserList = isMobile ? mobileUserListOpen : showUserList
 
   return (
