@@ -1,7 +1,5 @@
-import { useEffect, useMemo, useState } from "react"
-import { Menu, Users } from "lucide-react"
+import { useEffect, useState } from "react"
 import { cn } from "@/lib/utils"
-import { Button } from "@/components/ui/button"
 import { Sheet } from "@/components/ui/sheet"
 import ServerSidebar from "./ServerSidebar"
 import ChannelSidebar from "./ChannelSidebar"
@@ -55,15 +53,6 @@ export default function AppShell({
   const Sidebar = variant === "dm" ? DMListSidebar : ChannelSidebar
   const sidebarProps = variant === "dm" ? {} : { guildId, activeChannelId: channelName }
   const resolvedShowUserList = isMobile ? mobileUserListOpen : showUserList
-
-  const mobileTitle = useMemo(() => {
-    if (mode === "overview") {
-      if (variant === "guild") return guildName || "Server"
-      return "Direct Messages"
-    }
-    if (variant === "guild") return `#${channelName}`
-    return channelName || "Direct Messages"
-  }, [mode, variant, guildName, channelName])
 
   return (
     <>
@@ -127,37 +116,6 @@ export default function AppShell({
       <Sheet open={mobileUserListOpen} onOpenChange={setMobileUserListOpen} side="right">
         <UserList serverId={guildId} channelId={channelId} className="h-full w-full border-none" />
       </Sheet>
-
-      {isMobile && (
-        <div className="pointer-events-none fixed bottom-4 left-0 right-0 z-[170] flex justify-center md:hidden">
-          <div className="pointer-events-auto flex items-center gap-1 rounded-full border border-cyan-300/25 bg-slate-950/90 p-1.5 shadow-[0_14px_36px_-20px_rgba(34,211,238,0.7)] backdrop-blur-xl">
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-10 w-10 rounded-full text-slate-100 hover:bg-cyan-500/20"
-              onClick={() => setMobileMenuOpen(true)}
-            >
-              <Menu className="h-5 w-5" />
-            </Button>
-            <div className="max-w-[44vw] truncate px-2 text-xs font-semibold uppercase tracking-[0.18em] text-cyan-200/90">
-              {mobileTitle}
-            </div>
-            {variant === "guild" && (
-              <Button
-                variant="ghost"
-                size="icon"
-                className={cn(
-                  "h-10 w-10 rounded-full text-slate-100 hover:bg-cyan-500/20",
-                  mobileUserListOpen && "bg-cyan-500/20 text-cyan-100"
-                )}
-                onClick={() => setMobileUserListOpen((prev) => !prev)}
-              >
-                <Users className="h-5 w-5" />
-              </Button>
-            )}
-          </div>
-        </div>
-      )}
     </>
   )
 }
