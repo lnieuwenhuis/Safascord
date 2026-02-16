@@ -267,7 +267,17 @@ export async function runMigrations() {
     } catch {}
 
     // Performance Indexes
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_server_members_user_server ON server_members(user_id, server_id);`)
     await pool.query(`CREATE INDEX IF NOT EXISTS idx_server_member_roles_user_server ON server_member_roles(user_id, server_id);`)
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_server_member_roles_server_user ON server_member_roles(server_id, user_id);`)
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_channel_members_user_channel ON channel_members(user_id, channel_id);`)
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_channels_server_name ON channels(server_id, name);`)
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_channels_server_category_name ON channels(server_id, category, name);`)
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_messages_channel_created_at ON messages(channel_id, created_at DESC);`)
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_channel_permissions_channel_role ON channel_permissions(channel_id, role_id);`)
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_channel_permissions_channel_send ON channel_permissions(channel_id, can_send_messages);`)
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_channel_permissions_channel_view ON channel_permissions(channel_id, can_view);`)
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_roles_server_position ON roles(server_id, position);`)
 
     // Notifications
     await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS notifications_quiet_mode BOOLEAN DEFAULT FALSE;`)
@@ -289,6 +299,8 @@ export async function runMigrations() {
     try {
       await pool.query(`ALTER TABLE notifications ADD COLUMN IF NOT EXISTS channel_id UUID;`)
     } catch {}
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_notifications_user_created_at ON notifications(user_id, created_at DESC);`)
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_notifications_user_channel_read ON notifications(user_id, channel_id, read);`)
 
     // Message Attachments (ensure schema consistency)
     await pool.query(`ALTER TABLE messages ADD COLUMN IF NOT EXISTS attachment_url TEXT;`)

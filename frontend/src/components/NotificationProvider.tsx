@@ -13,10 +13,12 @@ interface NotificationContextType {
 }
 
 const NotificationContext = createContext<NotificationContextType | undefined>(undefined)
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 export function NotificationProvider({ children }: { children: React.ReactNode }) {
   const { user, isAuthenticated, token } = useAuth()
   const [notifications, setNotifications] = useState<AppNotification[]>([])
+  const notificationsRef = useRef<AppNotification[]>([])
   const wsRef = useRef<WebSocket | null>(null)
   const retryAttemptRef = useRef(0)
   const reconnectTimeoutRef = useRef<number | null>(null)
@@ -117,6 +119,10 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
     }
   }, [isAuthenticated, user])
 
+  useEffect(() => {
+    notificationsRef.current = notifications
+  }, [notifications])
+
   const markRead = useCallback(async (id: string) => {
     const authToken = token || localStorage.getItem("token") || ""
     if (!authToken) return
@@ -127,7 +133,9 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
 
   const markChannelRead = useCallback(async (channelId: string) => {
     const authToken = token || localStorage.getItem("token") || ""
-    if (!authToken) return
+    if (!authToken || !UUID_RE.test(channelId)) return
+    const hasUnread = notificationsRef.current.some((n) => n.channelId === channelId && !n.read)
+    if (!hasUnread) return
     setNotifications(prev => prev.map(n => n.channelId === channelId ? { ...n, read: true } : n))
     await api.markChannelNotificationsRead(authToken, channelId)
   }, [token])
