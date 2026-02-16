@@ -10,6 +10,26 @@ type ObjectType = {
   LastModified: Date;
 }
 
+function extensionFromMimeType(mimeType?: string) {
+  if (!mimeType) return ""
+  const map: Record<string, string> = {
+    "image/jpeg": ".jpg",
+    "image/png": ".png",
+    "image/gif": ".gif",
+    "image/webp": ".webp",
+    "image/avif": ".avif",
+    "image/svg+xml": ".svg",
+    "video/mp4": ".mp4",
+    "video/webm": ".webm",
+    "video/quicktime": ".mov",
+    "audio/mpeg": ".mp3",
+    "audio/ogg": ".ogg",
+    "application/pdf": ".pdf",
+    "text/plain": ".txt",
+  }
+  return map[mimeType] || ""
+}
+
 async function cleanupStorage() {
   try {
     console.log("Starting storage cleanup...")
@@ -119,13 +139,13 @@ export async function uploadRoutes(app: FastifyInstance) {
 
   app.post("/api/upload", async (req, reply) => {
     const data = await req.file()
-    if (!data) return { error: "No file" }
-    const ext = path.extname(data.filename)
+    if (!data) return reply.status(400).send({ error: "No file" })
+    const ext = path.extname(data.filename || "") || extensionFromMimeType(data.mimetype)
     const name = `${Date.now()}-${Math.random().toString(36).slice(2)}${ext}`
     
     // Limit 50MB
     const buffer = await data.toBuffer()
-    if (buffer.length > 50 * 1024 * 1024) return { error: "File too large (max 50MB)" }
+    if (buffer.length > 50 * 1024 * 1024) return reply.status(413).send({ error: "File too large (max 50MB)" })
   
     try {
       await s3.send(new PutObjectCommand({
@@ -143,13 +163,22 @@ export async function uploadRoutes(app: FastifyInstance) {
       const url = `${baseUrl}/${name}`
       return { url }
     } catch (e) {
-      console.error("Upload failed:", e)
+      req.log.error(
+        {
+          err: e,
+          bucket: BUCKET_NAME,
+          endpoint: process.env.S3_ENDPOINT || process.env.AWS_ENDPOINT_URL_S3 || process.env.ENDPOINT_URL,
+          region: process.env.S3_REGION || process.env.AWS_REGION || process.env.REGION,
+        },
+        "Upload failed"
+      )
       // Try cleanup and retry?
       // Only if error indicates storage full, but MinIO might return generic 500.
       // For now, we can trigger cleanup asynchronously on failure to help next time.
       cleanupStorage().catch(console.error)
-      
-      return { error: "Upload failed" }
+
+      const reason = e instanceof Error ? e.message : String(e)
+      return reply.status(500).send({ error: "Upload failed", reason })
     }
   })
 }
