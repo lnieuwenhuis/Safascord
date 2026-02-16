@@ -14,6 +14,8 @@ async function ensureBaseSchema() {
       bio TEXT,
       banner_color TEXT DEFAULT '#000000',
       banner_url TEXT,
+      custom_background_url TEXT,
+      custom_background_opacity REAL DEFAULT 0.85,
       status TEXT DEFAULT 'online',
       discriminator VARCHAR(4),
       allow_dms_from_strangers BOOLEAN DEFAULT TRUE,
@@ -118,6 +120,8 @@ export async function runMigrations() {
     await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS banner_color TEXT DEFAULT '#000000';`)
     await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS banner_url TEXT;`)
     await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar_url TEXT;`)
+    await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS custom_background_url TEXT;`)
+    await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS custom_background_opacity REAL DEFAULT 0.85;`)
     await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'online';`)
     await pool.query(`ALTER TABLE servers ADD COLUMN IF NOT EXISTS description TEXT;`)
     await pool.query(`ALTER TABLE servers ADD COLUMN IF NOT EXISTS icon_url TEXT;`)

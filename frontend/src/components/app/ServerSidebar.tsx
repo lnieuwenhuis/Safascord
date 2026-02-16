@@ -8,6 +8,7 @@ import CreateServerModal from "./CreateServerModal"
 import EditServerModal from "./EditServerModal"
 import type { Server } from "@/types"
 import { cn } from "@/lib/utils"
+import { useAuth } from "@/hooks/useAuth"
 
 import Inbox from "./Inbox"
 
@@ -21,19 +22,20 @@ export default function ServerSidebar() {
   const [confirmOpen, setConfirmOpen] = useState(false)
   const [leaveOpen, setLeaveOpen] = useState(false)
   const [userId, setUserId] = useState<string | null>(null)
-  const token = typeof window !== "undefined" ? localStorage.getItem("token") || "" : ""
+  const { token } = useAuth()
+  const authToken = token || (typeof window !== "undefined" ? localStorage.getItem("token") || "" : "")
   const activeServerId = getSelection().serverId
 
   useEffect(() => {
-    if (token) {
-      api.me(token).then(r => setUserId(r.user?.id || null)).catch(() => {})
-      api.servers(token).then((r) => setServers(r.servers)).catch(() => setServers([]))
+    if (authToken) {
+      api.me(authToken).then(r => setUserId(r.user?.id || null)).catch(() => {})
+      api.servers(authToken).then((r) => setServers(r.servers)).catch(() => setServers([]))
     }
-  }, [token])
+  }, [authToken])
 
   const activeServer = editId ? servers.find(s => s.id === editId) || null : null
   return (
-    <aside className="flex h-dvh w-16 flex-col items-center gap-2 overflow-y-auto overflow-x-hidden border-r border-base-300/70 bg-base-100/70 px-2 py-3 backdrop-blur-sm">
+    <aside className="flex h-dvh w-16 flex-col items-center gap-2 overflow-y-auto overflow-x-visible border-r border-base-300/70 bg-base-100/70 px-2 py-3 backdrop-blur-sm">
       <Button
         variant="default"
         size="icon"
@@ -94,9 +96,9 @@ export default function ServerSidebar() {
         onCancel={() => setConfirmOpen(false)}
         onConfirm={async () => {
           setConfirmOpen(false)
-          if (!token) return
+          if (!authToken) return
           if (editId) {
-            await api.deleteServer(token, editId)
+            await api.deleteServer(authToken, editId)
             setServers((prev) => prev.filter((x) => x.id !== editId))
           }
         }}
@@ -108,8 +110,8 @@ export default function ServerSidebar() {
         onCancel={() => setLeaveOpen(false)}
         onConfirm={async () => {
           setLeaveOpen(false)
-          if (!token || !editId) return
-          const res = await api.leaveServer(token, editId)
+          if (!authToken || !editId) return
+          const res = await api.leaveServer(authToken, editId)
           if (res.left) {
             setServers((prev) => prev.filter((x) => x.id !== editId))
             navigate('/channels/@me')

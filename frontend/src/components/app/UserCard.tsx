@@ -190,7 +190,7 @@ export function ProfileCard({
            {statusDropdownOpen && (
              <>
                <div className="fixed inset-0 z-50" onClick={() => setStatusDropdownOpen(false)} />
-               <div className="absolute bottom-full left-0 mb-1 w-full rounded-md border border-border bg-popover p-1 shadow-lg z-60">
+               <div className="absolute bottom-full left-0 mb-1 w-full rounded-md border border-border bg-popover p-1 shadow-lg z-[60]">
                  {(Object.keys(statusConfig) as UserStatus[]).map((s) => (
                    <button
                      key={s}
@@ -237,7 +237,7 @@ export default function UserCard() {
   const [editProfileOpen, setEditProfileOpen] = useState(false) // Edit Profile Modal
   const [isSaving, setIsSaving] = useState(false)
 
-  const { user, updateUser } = useAuth()
+  const { user, updateUser, token } = useAuth()
   
   // Initialize state from user object
   const [displayName, setDisplayName] = useState((user && (user.displayName || user.username)) || "You")
@@ -303,20 +303,20 @@ export default function UserCard() {
       // If temp values are explicitly null (cleared), respect that
       if (tempCustomBackground === null) newBackgroundUrl = null
 
-      const token = localStorage.getItem("token")
-      if (!token) return
+      const authToken = token || localStorage.getItem("token")
+      if (!authToken) return
 
       // Upload files if changed
       if (bannerFile) {
-        const res = await api.uploadFile(token, bannerFile)
+        const res = await api.uploadFile(authToken, bannerFile)
         if (res.url) newBannerUrl = res.url
       }
       if (avatarFile) {
-        const res = await api.uploadFile(token, avatarFile)
+        const res = await api.uploadFile(authToken, avatarFile)
         if (res.url) newAvatarUrl = res.url
       }
       if (customBackgroundFile) {
-        const res = await api.uploadFile(token, customBackgroundFile)
+        const res = await api.uploadFile(authToken, customBackgroundFile)
         if (res.url) newBackgroundUrl = res.url
       }
 
@@ -331,11 +331,11 @@ export default function UserCard() {
         status: status // Maintain current status
       }
       
-      const profileRes = await api.updateProfile(token, profileData)
+      const profileRes = await api.updateProfile(authToken, profileData)
       
       // Update Display Name if changed
       if (tempDisplayName !== displayName) {
-        await api.updateDisplayName(token, tempDisplayName)
+        await api.updateDisplayName(authToken, tempDisplayName)
       }
 
       // Update Context
@@ -364,10 +364,10 @@ export default function UserCard() {
   const handleStatusChange = async (s: UserStatus) => {
     setStatus(s)
     if (!user) return
-    const token = localStorage.getItem("token")
-    if (token) {
+    const authToken = token || localStorage.getItem("token")
+    if (authToken) {
       try {
-        const res = await api.updateProfile(token, { status: s })
+        const res = await api.updateProfile(authToken, { status: s })
         if (res.user) {
           updateUser(res.user)
         }
@@ -476,7 +476,7 @@ export default function UserCard() {
 
       {/* Edit Profile Modal */}
       {editProfileOpen && (
-        <div className="fixed inset-0 z-100 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in duration-200">
           <div className="flex h-[85vh] w-[800px] overflow-hidden rounded-lg bg-card shadow-2xl animate-in zoom-in-95 duration-200 flex-col md:flex-row">
             
             {/* Sidebar / Form */}

@@ -9,10 +9,12 @@ import { Input } from "@/components/ui/input"
 import type { Server, ChannelSection } from "@/types"
 import ChannelModal from "./ChannelModal"
 import { useNotifications } from "../NotificationProvider"
+import { useAuth } from "@/hooks/useAuth"
 
 export default function ChannelSidebar({ guildId, activeChannelId }: { guildId?: string, activeChannelId?: string }) {
   const navigate = useNavigate()
   const { notifications } = useNotifications()
+  const { token } = useAuth()
   const [sections, setSections] = useState<ChannelSection[]>([])
   const [server, setServer] = useState<Server | null>(null)
   const [menu, setMenu] = useState<{ channel: string; x: number; y: number } | null>(null)
@@ -30,15 +32,15 @@ export default function ChannelSidebar({ guildId, activeChannelId }: { guildId?:
   const [newCategoryName, setNewCategoryName] = useState("")
   const [channelQuery, setChannelQuery] = useState("")
   
-  const token = typeof window !== "undefined" ? localStorage.getItem("token") || "" : ""
+  const authToken = token || (typeof window !== "undefined" ? localStorage.getItem("token") || "" : "")
   
   useEffect(() => {
     loadChannels()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [guildId])
+  }, [guildId, authToken])
   
   const loadChannels = () => {
-    api.channels(guildId, token).then((r) => {
+    api.channels(guildId, authToken).then((r) => {
       setSections(r.sections)
     }).catch(() => setSections([
       { title: "Admin", channels: [{ id: "1", name: "announcements", type: "text" }, { id: "2", name: "rulebook", type: "text" }] },
@@ -48,12 +50,12 @@ export default function ChannelSidebar({ guildId, activeChannelId }: { guildId?:
   }
 
   useEffect(() => {
-    if (!guildId) return
-    api.servers(token).then((r) => {
+    if (!guildId || !authToken) return
+    api.servers(authToken).then((r) => {
       const s = r.servers.find((x) => String(x.id) === String(guildId))
       setServer(s || null)
     }).catch(() => setServer(null))
-  }, [guildId, token])
+  }, [guildId, authToken])
 
   const handleEditChannel = async (channelName: string) => {
      if (!guildId) return
@@ -145,7 +147,7 @@ export default function ChannelSidebar({ guildId, activeChannelId }: { guildId?:
         <UserCard />
       </div>
       {menu && (
-        <div className="menu fixed z-120 w-44 rounded-box border border-base-300 bg-base-100 p-1 shadow-xl" style={{ left: menu.x, top: menu.y }} onMouseLeave={() => setMenu(null)}>
+        <div className="menu fixed z-[120] w-44 rounded-box border border-base-300 bg-base-100 p-1 shadow-xl" style={{ left: menu.x, top: menu.y }} onMouseLeave={() => setMenu(null)}>
           {menu.channel === "__header__" ? (
             <>
               <button className="btn btn-ghost btn-sm justify-start" onClick={() => { 
@@ -159,9 +161,9 @@ export default function ChannelSidebar({ guildId, activeChannelId }: { guildId?:
               }}>Create Category</button>
               <button className="btn btn-ghost btn-sm justify-start" onClick={async () => {
                 setMenu(null)
-                if (!guildId || !token) return
+                if (!guildId || !authToken) return
                 try {
-                  const r = await api.createInvite(token, guildId)
+                  const r = await api.createInvite(authToken, guildId)
                   if (r.code) {
                     const link = `${window.location.origin}/invite/${r.code}`
                     await navigator.clipboard.writeText(link)
@@ -202,7 +204,7 @@ export default function ChannelSidebar({ guildId, activeChannelId }: { guildId?:
 
       {/* Create Category Modal */}
       {createCategoryOpen && (
-        <div className="fixed inset-0 z-110 flex items-center justify-center bg-black/60 backdrop-blur-sm supports-backdrop-filter:bg-black/50 p-4" onClick={() => setCreateCategoryOpen(false)}>
+        <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/60 backdrop-blur-sm supports-backdrop-filter:bg-black/50 p-4" onClick={() => setCreateCategoryOpen(false)}>
           <div className="w-[420px] rounded-2xl border border-base-300 bg-base-100 p-5 text-base-content shadow-2xl" onClick={(e) => e.stopPropagation()}>
             <div className="text-lg font-semibold">Create Category</div>
             <div className="mt-2"><Input placeholder="Category Name" value={newCategoryName} onChange={(e) => setNewCategoryName(e.target.value)} /></div>
@@ -210,7 +212,7 @@ export default function ChannelSidebar({ guildId, activeChannelId }: { guildId?:
               <button className="btn btn-ghost btn-sm" onClick={() => setCreateCategoryOpen(false)}>Cancel</button>
               <button className="btn btn-primary btn-sm" onClick={async () => { 
                  if (!guildId || !newCategoryName) return
-                 await api.createCategory(token, guildId, newCategoryName)
+                 await api.createCategory(authToken, guildId, newCategoryName)
                  loadChannels()
                  setCreateCategoryOpen(false)
               }}>Create</button>
@@ -226,10 +228,10 @@ export default function ChannelSidebar({ guildId, activeChannelId }: { guildId?:
         onCancel={() => setConfirmOpen(false)}
         onConfirm={async () => {
           setConfirmOpen(false)
-          if (!token || !guildId) return
+          if (!authToken || !guildId) return
           if (confirmAction === "delete" && editChannel) {
             const idRes = await api.channelIdByName(guildId, editChannel)
-            if (idRes.id) await api.deleteChannel(token, idRes.id)
+            if (idRes.id) await api.deleteChannel(authToken, idRes.id)
             loadChannels()
           }
         }}

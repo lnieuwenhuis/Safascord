@@ -10,7 +10,7 @@ import { Textarea } from "@/components/ui/textarea"
 import type { User } from "@/types"
 
 export default function Onboarding() {
-  const { user, updateUser, isAuthenticated, isLoading: authLoading } = useAuth()
+  const { user, updateUser, isAuthenticated, isLoading: authLoading, token } = useAuth()
   const navigate = useNavigate()
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState("")
@@ -36,10 +36,10 @@ export default function Onboarding() {
     setError("")
 
     try {
-      const token = localStorage.getItem("token")
-      if (!token) throw new Error("No token")
+      const authToken = token || localStorage.getItem("token")
+      if (!authToken) throw new Error("No token")
 
-      const res = await api.updateProfile(token, {
+      const res = await api.updateProfile(authToken, {
         username,
         displayName,
         bio
