@@ -39,6 +39,8 @@ export default function ChatPanel({ variant, channelName, channelId, guildName, 
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
   const [isUploading, setIsUploading] = useState(false)
+  const reconnectTimeoutRef = useRef<number | null>(null)
+  const reconnectAttemptsRef = useRef(0)
   
   // Editing state
   const [editingId, setEditingId] = useState<string | null>(null)
@@ -46,12 +48,13 @@ export default function ChatPanel({ variant, channelName, channelId, guildName, 
 
   const { user } = useAuth()
   const token = typeof window !== "undefined" ? (localStorage.getItem("token") || "") : ""
+  const channelKey = channelId || channelName
 
   useEffect(() => {
-    if (channelName) {
-      markChannelRead(channelName)
+    if (channelKey) {
+      markChannelRead(channelKey)
     }
-  }, [channelName, markChannelRead])
+  }, [channelKey, markChannelRead])
   
   useEffect(() => {
     setMsgs([])
@@ -134,10 +137,10 @@ export default function ChatPanel({ variant, channelName, channelId, guildName, 
 
     const ws = wsRef.current
     if (ws && ws.readyState === WebSocket.OPEN) {
-      ws.send(JSON.stringify({ type: "typing.start", channel: channelName, user: display, userId: user?.id }))
+      ws.send(JSON.stringify({ type: "typing.start", channel: channelKey, user: display, userId: user?.id }))
       if (idleRef.current) clearTimeout(idleRef.current)
       idleRef.current = setTimeout(() => {
-        ws.send(JSON.stringify({ type: "typing.stop", channel: channelName, user: display, userId: user?.id }))
+        ws.send(JSON.stringify({ type: "typing.stop", channel: channelKey, user: display, userId: user?.id }))
         idleRef.current = null
       }, 1200)
     }
@@ -185,10 +188,10 @@ export default function ChatPanel({ variant, channelName, channelId, guildName, 
   const effectiveCanSend = canSend && canSendState
 
   useEffect(() => {
-    if (!channelName) return
+    if (!channelKey) return
     const token = localStorage.getItem("token") || ""
     // Pass serverId (guildId) if available to disambiguate channels with same name
-    api.messages(token, channelName, 50, undefined, guildId).then((r) => {
+    api.messages(token, channelKey, 50, undefined, guildId).then((r) => {
       setMsgs(r.messages)
       setHasMore(r.messages.length >= 50)
     }).catch(() => {
@@ -205,7 +208,7 @@ export default function ChatPanel({ variant, channelName, channelId, guildName, 
             // If sections exist, check permissions for the specific channel
             // Flatten sections to find the channel
             for (const s of res.sections) {
-               const c = s.channels.find(x => x.name === channelName)
+               const c = s.channels.find(x => x.name === channelName || x.id === channelKey)
                if (c) {
                   // If canSendMessages is undefined, it means no override, so it defaults to true/inherited
                   // But in our API, if the user has ANY role that allows sending, the backend should reflect that.
@@ -226,97 +229,140 @@ export default function ChatPanel({ variant, channelName, channelId, guildName, 
     } else {
        setCanSendState(true)
     }
-  }, [channelName, user?.id, variant, guildName, guildId, token])
+  }, [channelName, channelKey, user?.id, variant, guildName, guildId, token])
 
   useEffect(() => {
     const el = listRef.current
     if (!el) return
     el.scrollTop = el.scrollHeight
-  }, [msgs.length, channelName, variant])
+  }, [msgs.length, channelKey, variant])
 
   useEffect(() => {
-    if (!channelName) return
+    if (!channelKey) return
     let cancelled = false
-    let ws: WebSocket | null = null
     const prev = wsRef.current
     if (prev) {
       try { prev.close() } catch (e) { console.error(e) }
       wsRef.current = null
     }
-    api.socketInfo(channelName).then((info) => {
+
+    const scheduleReconnect = () => {
       if (cancelled) return
-      ws = new WebSocket(info.wsUrl)
-      wsRef.current = ws
-      ws.onopen = () => {
-        ws?.send(JSON.stringify({ type: "subscribe", channel: channelName }))
-      }
-      ws.onmessage = (ev) => {
-        let data: unknown
-        try { data = JSON.parse(String(ev.data)) } catch { return }
-        const d = data as { 
-          type?: string; 
-          channel?: string; 
-          user?: string; 
-          userAvatar?: string; 
-          userId?: string; 
-          active?: boolean; 
-          message?: { id: string; text: string; attachmentUrl?: string; ts?: string }; 
-          messageId?: string;
-          roleColor?: string 
+      const delay = Math.min(1000 * (2 ** reconnectAttemptsRef.current), 10000)
+      reconnectAttemptsRef.current += 1
+      reconnectTimeoutRef.current = window.setTimeout(() => {
+        connect()
+      }, delay)
+    }
+
+    const connect = async () => {
+      try {
+        const info = await api.socketInfo(channelKey)
+        if (cancelled) return
+
+        const ws = new WebSocket(info.wsUrl)
+        wsRef.current = ws
+
+        ws.onopen = () => {
+          reconnectAttemptsRef.current = 0
+          ws.send(JSON.stringify({ type: "subscribe", channel: channelKey }))
         }
 
-        if (d.type === "typing" && d.channel === channelName && d.user) {
-          if (user?.id && d.userId === user.id) return
-          const name = d.user
-          setTyping((prev) => {
-            const next = new Set(prev)
-            if (d.active) next.add(name)
-            else next.delete(name)
-            return next
-          })
+        ws.onmessage = (ev) => {
+          let data: unknown
+          try { data = JSON.parse(String(ev.data)) } catch { return }
+          const d = data as {
+            type?: string
+            channel?: string
+            user?: string
+            userAvatar?: string
+            userId?: string
+            active?: boolean
+            message?: { id: string; text: string; attachmentUrl?: string; ts?: string }
+            messageId?: string
+            roleColor?: string
+          }
+
+          const sameChannel = d.channel === channelKey || d.channel === channelName
+
+          if (d.type === "typing" && sameChannel && d.user) {
+            if (user?.id && d.userId === user.id) return
+            const name = d.user
+            setTyping((prevTyping) => {
+              const next = new Set(prevTyping)
+              if (d.active) next.add(name)
+              else next.delete(name)
+              return next
+            })
+          }
+
+          if (d.type === "message" && sameChannel && d.message) {
+            setMsgs((prevMsgs) => {
+              if (prevMsgs.some((x) => x.id === d.message!.id)) return prevMsgs
+              return [...prevMsgs, {
+                id: d.message!.id,
+                user: d.user || "User",
+                userAvatar: d.userAvatar,
+                userId: d.userId,
+                text: d.message!.text,
+                attachmentUrl: d.message!.attachmentUrl,
+                ts: d.message!.ts || new Date().toISOString(),
+                roleColor: d.roleColor,
+              }]
+            })
+            if (d.user) {
+              setTyping((prevTyping) => {
+                const next = new Set(prevTyping)
+                next.delete(d.user!)
+                return next
+              })
+            }
+          }
+
+          if (d.type === "message_delete" && sameChannel && d.messageId) {
+            setMsgs((prevMsgs) => prevMsgs.filter((m) => m.id !== d.messageId))
+          }
+
+          if (d.type === "message_update" && sameChannel && d.message) {
+            setMsgs((prevMsgs) => prevMsgs.map((m) => m.id === d.message!.id ? { ...m, text: d.message!.text } : m))
+          }
         }
-        if (d.type === "message" && d.channel === channelName && d.message) {
-          setTyping((prev) => prev) // no-op, keep typing as-is
-          setMsgs((prev) => {
-            if (prev.some((x) => x.id === d.message!.id)) return prev
-            return [...prev, { 
-              id: d.message!.id, 
-              user: d.user || "User", 
-              userAvatar: d.userAvatar,
-              userId: d.userId,
-              text: d.message!.text, 
-              attachmentUrl: d.message!.attachmentUrl,
-              ts: d.message!.ts || new Date().toISOString(),
-              roleColor: d.roleColor
-            }]
-          })
-          if (d.user) setTyping((prev) => { const next = new Set(prev); next.delete(d.user!); return next })
+
+        ws.onerror = () => {
+          try {
+            ws.close()
+          } catch (e) {
+            console.error("Failed to close chat socket", e)
+          }
         }
-        if (d.type === "message_delete" && d.channel === channelName && d.messageId) {
-          setMsgs((prev) => prev.filter(m => m.id !== d.messageId))
+
+        ws.onclose = () => {
+          if (wsRef.current === ws) wsRef.current = null
+          scheduleReconnect()
         }
-        if (d.type === "message_update" && d.channel === channelName && d.message) {
-          setMsgs((prev) => prev.map(m => m.id === d.message!.id ? { ...m, text: d.message!.text } : m))
-        }
+      } catch {
+        scheduleReconnect()
       }
-      ws.onclose = () => {
-        if (wsRef.current === ws) wsRef.current = null
-      }
-    }).catch(() => {})
+    }
+
+    connect()
     return () => {
       cancelled = true
+      if (reconnectTimeoutRef.current) {
+        window.clearTimeout(reconnectTimeoutRef.current)
+        reconnectTimeoutRef.current = null
+      }
       const cur = wsRef.current
       if (!cur) return
       try {
         if (cur.readyState === WebSocket.OPEN) {
-          cur.send(JSON.stringify({ type: "unsubscribe", channel: channelName }))
+          cur.send(JSON.stringify({ type: "unsubscribe", channel: channelKey }))
         }
       } catch (e) { console.error(e) }
       try { cur.close() } catch (e) { console.error(e) }
       wsRef.current = null
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [channelName])
+  }, [channelKey, channelName, user?.id])
 
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
@@ -343,7 +389,7 @@ export default function ChatPanel({ variant, channelName, channelId, guildName, 
     const ws = wsRef.current
     try {
       if (ws && ws.readyState === WebSocket.OPEN) {
-        ws.send(JSON.stringify({ type: "typing.stop", channel: channelName, user: display, userId: user?.id }))
+        ws.send(JSON.stringify({ type: "typing.stop", channel: channelKey, user: display, userId: user?.id }))
       }
     } catch (e) { console.error(e) }
     
@@ -365,7 +411,7 @@ export default function ChatPanel({ variant, channelName, channelId, guildName, 
 
     try {
       if (token) {
-        const r = await api.sendMessage(token, channelName, t, guildId, attachmentUrl)
+        const r = await api.sendMessage(token, channelKey, t, guildId, attachmentUrl)
         if ("error" in r) {
           console.error("Error sending message:", r.error)
           return
@@ -391,7 +437,7 @@ export default function ChatPanel({ variant, channelName, channelId, guildName, 
       const oldest = msgs[0]?.ts
       const token = localStorage.getItem("token") || ""
       try {
-        const r = await api.messages(token, channelName, 50, oldest, guildId)
+        const r = await api.messages(token, channelKey, 50, oldest, guildId)
         setMsgs((prev) => [...r.messages, ...prev])
         setHasMore(r.messages.length >= 50)
       } finally {
@@ -428,8 +474,8 @@ export default function ChatPanel({ variant, channelName, channelId, guildName, 
   }
 
   return (
-    <div className="min-h-0 flex flex-1 flex-col bg-background text-foreground">
-      <div className="flex h-12 items-center justify-between border-b border-border px-4 shadow-sm">
+    <div className="min-h-0 flex flex-1 flex-col bg-base-100/60 text-foreground backdrop-blur-sm">
+      <div className="flex h-12 items-center justify-between border-b border-base-300 px-4 shadow-sm">
         <div className="flex items-center gap-2">
           <Button variant="ghost" size="icon" className="md:hidden mr-2 -ml-2 text-muted-foreground" onClick={onMobileMenu}>
             <Menu className="h-5 w-5" />
@@ -449,7 +495,7 @@ export default function ChatPanel({ variant, channelName, channelId, guildName, 
             <Button 
               variant="ghost" 
               size="icon" 
-              className={cn("text-muted-foreground", showUserList && "text-foreground bg-accent")} 
+              className={cn("text-muted-foreground", showUserList && "text-foreground bg-primary/10")} 
               onClick={onUserListToggle}
             >
               <Users className="h-5 w-5" />
@@ -505,9 +551,9 @@ export default function ChatPanel({ variant, channelName, channelId, guildName, 
                  return (
                     <div key={`date-${node.id}`} className="relative flex items-center justify-center my-4">
                        <div className="absolute inset-0 flex items-center">
-                          <div className="w-full border-t border-border" />
+                          <div className="w-full border-t border-base-300" />
                        </div>
-                       <div className="relative bg-background px-2 text-xs text-muted-foreground">
+                       <div className="relative bg-base-100 px-2 text-xs text-muted-foreground">
                           {formatDateline(node.date)}
                        </div>
                     </div>
@@ -524,7 +570,7 @@ export default function ChatPanel({ variant, channelName, channelId, guildName, 
                 : getFullUrl(g.userAvatar)
 
               return (
-                <div key={first.id} className="flex items-start gap-3 group hover:bg-muted/50 -mx-4 px-4 py-0.5 mt-[17px]">
+                <div key={first.id} className="group mt-[17px] flex items-start gap-3 -mx-4 px-4 py-0.5 hover:bg-base-200/45">
                   <div 
                     className="h-8 w-8 rounded-full bg-primary/20 mt-0.5 overflow-hidden shrink-0 cursor-pointer hover:opacity-80"
                     onClick={() => g.userId && setSelectedUserId(g.userId)}
@@ -597,7 +643,7 @@ export default function ChatPanel({ variant, channelName, channelId, guildName, 
                                 ) : it.attachmentUrl.match(/\.(mp4|webm|mov)$/i) ? (
                                    <video src={getFullUrl(it.attachmentUrl) || ""} controls className="max-w-sm max-h-80 rounded-md" />
                                 ) : (
-                                   <a href={getFullUrl(it.attachmentUrl) || ""} target="_blank" rel="noreferrer" className="flex items-center gap-2 text-blue-400 hover:underline bg-secondary/20 p-2 rounded w-fit">
+                                   <a href={getFullUrl(it.attachmentUrl) || ""} target="_blank" rel="noreferrer" className="flex w-fit items-center gap-2 rounded-xl border border-base-300 bg-base-200/60 p-2 text-blue-500 hover:underline">
                                       <FileIcon className="h-4 w-4" />
                                       Download Attachment
                                    </a>
@@ -606,7 +652,7 @@ export default function ChatPanel({ variant, channelName, channelId, guildName, 
                           )}
                           
                           {!isEditing && isMyMessage && (
-                            <div className="absolute right-4 top-0 hidden group-hover/msg:flex items-center bg-background border rounded shadow-sm z-10">
+                            <div className="absolute right-4 top-0 z-10 hidden items-center rounded-lg border border-base-300 bg-base-100 shadow-sm group-hover/msg:flex">
                                <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => startEditing(it.id, it.text)}>
                                   <Pencil className="h-3 w-3" />
                                </Button>
@@ -628,9 +674,9 @@ export default function ChatPanel({ variant, channelName, channelId, guildName, 
       {typing.size > 0 && (
         <div className="px-4 pt-1 text-xs text-muted-foreground animate-pulse font-medium">{Array.from(typing).join(", ")} is typing…</div>
       )}
-      <div className="flex h-auto min-h-16 flex-col justify-center border-t border-border px-3 bg-background py-2">
+      <div className="flex h-auto min-h-16 flex-col justify-center border-t border-base-300 bg-base-100/80 px-3 py-2">
         {selectedFile && (
-           <div className="flex items-center gap-2 bg-muted/50 p-2 rounded mb-2">
+           <div className="mb-2 flex items-center gap-2 rounded-xl border border-base-300 bg-base-100 p-2">
               {selectedFile.type.startsWith('image/') ? (
                  <img 
                     src={URL.createObjectURL(selectedFile)} 
@@ -660,8 +706,8 @@ export default function ChatPanel({ variant, channelName, channelId, guildName, 
           </Button>
           <div className="relative w-full">
             {showMentionMenu && filteredMembers.length > 0 && (
-               <div className="absolute bottom-full left-0 w-64 bg-popover border border-border rounded-md shadow-lg mb-2 overflow-hidden z-50">
-                 <div className="text-xs font-bold text-muted-foreground px-3 py-2 bg-muted/50">MEMBERS MATCHING @{mentionQuery}</div>
+               <div className="absolute bottom-full left-0 z-50 mb-2 w-64 overflow-hidden rounded-xl border border-base-300 bg-base-100 shadow-lg">
+                 <div className="bg-base-200/65 px-3 py-2 text-xs font-bold text-muted-foreground">MEMBERS MATCHING @{mentionQuery}</div>
                  {filteredMembers.map((m, i) => (
                    <button
                      key={m.id}
@@ -689,7 +735,7 @@ export default function ChatPanel({ variant, channelName, channelId, guildName, 
                </div>
             )}
             <Input
-              className="border-0 bg-muted/50 focus-visible:ring-1 focus-visible:ring-ring"
+              className="border-base-300 bg-base-100"
               placeholder={!effectiveCanSend ? "You do not have permission to send messages in this channel." : (variant === "guild" ? `Message #${channelName}` : `Message ${localDmUser ? (localDmUser.displayName || localDmUser.username) : "Direct Message"}`)}
               disabled={!effectiveCanSend || isUploading}
               value={text}

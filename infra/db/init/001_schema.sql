@@ -5,7 +5,8 @@ CREATE TABLE IF NOT EXISTS users (
   username TEXT NOT NULL UNIQUE,
   email TEXT,
   display_name TEXT,
-  password_hash TEXT
+  password_hash TEXT,
+  shoo_sub TEXT UNIQUE
 );
 
 ALTER TABLE users ADD COLUMN IF NOT EXISTS display_name TEXT;

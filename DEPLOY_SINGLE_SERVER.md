@@ -1,93 +1,75 @@
-# Single Server Deployment Guide
+# Railway Deployment Guide (cord.safasfly.dev)
 
-This guide describes how to deploy the application on a single Linux server (Ubuntu/Debian recommended).
+This project is now configured for Railway as a multi-service deployment:
+- `frontend` (React/Vite)
+- `backend` (Fastify API)
+- `realtime` (WebSocket service)
+- Railway PostgreSQL plugin
+- Railway Redis plugin
+- External S3-compatible bucket for uploads
 
-## Prerequisites
+## 1. Create Services on Railway
 
-1.  **Linux Server**: A VPS or physical server with at least 2GB RAM (4GB+ recommended).
-2.  **Domain Name**: Point the following DNS records to your server's IP:
-    *   `yourdomain.com` (A Record)
-    *   `storage.yourdomain.com` (A Record)
-    *   `console.yourdomain.com` (A Record)
-3.  **Docker & Docker Compose**:
-    ```bash
-    # Install Docker
-    curl -fsSL https://get.docker.com | sh
-    # Verify installation
-    docker compose version
-    ```
+From the same GitHub repo, create three app services:
+1. `frontend` with root directory `frontend/`
+2. `backend` with root directory `backend/`
+3. `realtime` with root directory `realtime/`
 
-## Deployment Steps
+Each service already includes a `railway.json`.
 
-### 1. Clone the Repository
-SSH into your server and clone the project:
-```bash
-git clone https://github.com/yourusername/discord-clone.git
-cd discord-clone
-```
+Then add:
+1. PostgreSQL plugin service
+2. Redis plugin service
 
-### 2. Configure Environment Variables
-Create a `.env` file in the root directory:
-```bash
-cp .env.example .env
-nano .env
-```
+## 2. Configure S3-Compatible Storage
 
-**Important Production Variables:**
-```ini
-# Domain
-DOMAIN_NAME=yourdomain.com
-ACME_EMAIL=admin@yourdomain.com (For SSL certificates)
+Use Cloudflare R2, AWS S3, or another S3-compatible provider.  
+Create a bucket for image/file uploads (example: `safascord-uploads`).
 
-# Database
-POSTGRES_USER=app
-POSTGRES_PASSWORD=secure_password_here
-POSTGRES_DB=app
+## 3. Set Environment Variables
 
-# Redis
-REDIS_URL=redis://redis:6379
+Use `railway.env.example` as your baseline.
 
-# MinIO (S3 Storage)
-MINIO_ROOT_USER=admin
-MINIO_ROOT_PASSWORD=secure_minio_password
-S3_ENDPOINT=http://minio:9000
-S3_ACCESS_KEY=admin
-S3_SECRET_KEY=secure_minio_password
-S3_BUCKET_NAME=uploads
-S3_PUBLIC_URL=https://storage.yourdomain.com
+Minimum required values:
+- Frontend:
+  - `VITE_API_BASE=https://api.cord.safasfly.dev/api`
+  - `VITE_WS_BASE=wss://ws.cord.safasfly.dev/ws`
+- Backend:
+  - `DATABASE_URL`
+  - `REDIS_URL`
+  - `JWT_SECRET`
+  - `SHOO_BASE_URL`
+  - `SHOO_ISSUER`
+  - `SHOO_ALLOWED_ORIGINS`
+  - `REALTIME_BASE_HTTP` (private Railway URL for realtime)
+  - `REALTIME_BASE_WS=wss://ws.cord.safasfly.dev/ws`
+  - `CORS_ORIGINS=https://cord.safasfly.dev`
+  - S3 vars (`S3_ENDPOINT`, `S3_ACCESS_KEY`, `S3_SECRET_KEY`, `S3_BUCKET_NAME`)
+- Realtime:
+  - `REDIS_URL`
+  - `WS_ALLOWED_ORIGINS=https://cord.safasfly.dev`
 
-# Auth (WorkOS)
-WORKOS_API_KEY=sk_...
-WORKOS_CLIENT_ID=client_...
-JWT_SECRET=very_long_random_secret_string
-```
+## 4. Attach Custom Domains
 
-### 3. Build and Start
-Run the production stack using Docker Compose:
+Set custom domains:
+- Frontend service: `cord.safasfly.dev`
+- Backend service: `api.cord.safasfly.dev`
+- Realtime service: `ws.cord.safasfly.dev`
 
-```bash
-docker compose -f infra/docker-compose.prod.yml up -d --build
-```
+Then point DNS CNAMEs to Railway targets for each service.
 
-*   `-d`: Runs in detached mode (background).
-*   `--build`: Forces a build of the images from source.
+## 5. Verify Deployment
 
-### 4. Verification
-Check the status of your containers:
-```bash
-docker compose -f infra/docker-compose.prod.yml ps
-```
+- Frontend: `https://cord.safasfly.dev`
+- API health: `https://api.cord.safasfly.dev/api/health`
+- API readiness: `https://api.cord.safasfly.dev/api/ready`
+- Realtime health: `https://ws.cord.safasfly.dev/health`
+- Realtime readiness: `https://ws.cord.safasfly.dev/ready`
 
-View logs if something isn't working:
-```bash
-docker compose -f infra/docker-compose.prod.yml logs -f
-```
+## Notes
 
-### 5. Accessing the App
-*   **Frontend**: `https://yourdomain.com`
-*   **API**: `https://yourdomain.com/api/health`
-*   **MinIO Console**: `https://console.yourdomain.com` (Login with MINIO_ROOT_USER/PASSWORD)
-
-### Maintenance
-*   **Update Code**: `git pull && docker compose -f infra/docker-compose.prod.yml up -d --build`
-*   **Stop Server**: `docker compose -f infra/docker-compose.prod.yml down`
+- This setup intentionally avoids Docker in production.
+- Storage bucket creation/policy is disabled by default in production (`S3_AUTO_INIT=false`).
+- If you run MinIO locally, set:
+  - `S3_FORCE_PATH_STYLE=true`
+  - `S3_AUTO_INIT=true`

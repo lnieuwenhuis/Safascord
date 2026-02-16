@@ -9,4 +9,16 @@ if (process.env.REDIS_CLUSTER_NODES) {
   redis = new Redis(process.env.REDIS_URL || "redis://localhost:6379")
 }
 
+redis.on("error", (err) => {
+  console.error("Redis connection error:", err)
+})
+
+export async function checkRedisConnection() {
+  await redis.ping()
+}
+
+export async function closeRedisConnection() {
+  await redis.quit()
+}
+
 export { redis }

@@ -1,12 +1,13 @@
 import { Button } from "@/components/ui/button"
 import { useNavigate } from "react-router-dom"
-import { setSelection } from "@/hooks/useSelection"
+import { getSelection, setSelection } from "@/hooks/useSelection"
 import { useEffect, useState } from "react"
 import { api, getFullUrl } from "@/lib/api"
 import ConfirmDialog from "./ConfirmDialog"
 import CreateServerModal from "./CreateServerModal"
 import EditServerModal from "./EditServerModal"
 import type { Server } from "@/types"
+import { cn } from "@/lib/utils"
 
 import Inbox from "./Inbox"
 
@@ -21,6 +22,7 @@ export default function ServerSidebar() {
   const [leaveOpen, setLeaveOpen] = useState(false)
   const [userId, setUserId] = useState<string | null>(null)
   const token = typeof window !== "undefined" ? localStorage.getItem("token") || "" : ""
+  const activeServerId = getSelection().serverId
 
   useEffect(() => {
     if (token) {
@@ -31,20 +33,25 @@ export default function ServerSidebar() {
 
   const activeServer = editId ? servers.find(s => s.id === editId) || null : null
   return (
-    <aside className="flex h-dvh w-16 flex-col items-center gap-3 overflow-y-auto overflow-x-hidden border-r border-border bg-background px-2 py-3">
+    <aside className="flex h-dvh w-16 flex-col items-center gap-2 overflow-y-auto overflow-x-hidden border-r border-base-300/70 bg-base-100/70 px-2 py-3 backdrop-blur-sm">
       <Button
-        variant="brand"
+        variant="default"
         size="icon"
-        className="rounded-2xl"
+        className="rounded-2xl shadow-md"
         onClick={() => navigate('/channels/@me')}
       >
-        D
+        C
       </Button>
-      <div className="h-px w-8 bg-white/10" />
+      <div className="h-px w-8 bg-base-300" />
       {servers.map(s => (
         <button
           key={s.id}
-          className="flex h-12 w-12 items-center justify-center rounded-2xl bg-card text-xs hover:bg-card/80 overflow-hidden"
+          className={cn(
+            "group relative flex h-12 w-12 items-center justify-center overflow-hidden rounded-2xl border text-xs font-semibold transition-all",
+            activeServerId === s.id
+              ? "border-primary bg-primary/10 text-primary shadow-md"
+              : "border-base-300/70 bg-base-100 text-base-content/85 hover:border-primary/40 hover:bg-primary/5"
+          )}
           onClick={() => {
             setSelection({ serverId: String(s.id), channelId: undefined })
             navigate('/server')
@@ -63,18 +70,18 @@ export default function ServerSidebar() {
         </button>
       ))}
       {menu && (
-        <div className="fixed z-[120] rounded border border-border bg-popover shadow-md text-popover-foreground" style={{ left: menu.x, top: menu.y }} onMouseLeave={() => setMenu(null)}>
+        <div className="menu fixed z-[120] w-44 rounded-box border border-base-300 bg-base-100 p-1 shadow-xl" style={{ left: menu.x, top: menu.y }} onMouseLeave={() => setMenu(null)}>
           {menu.id === "__home__" ? (
-             <button className="block w-40 px-3 py-2 text-left hover:bg-accent hover:text-accent-foreground text-sm" onClick={() => { setCreateOpen(true); setMenu(null) }}>Create Server</button>
+             <button className="btn btn-ghost btn-sm justify-start" onClick={() => { setCreateOpen(true); setMenu(null) }}>Create Server</button>
           ) : (
             <>
               {servers.find(s => s.id === menu.id)?.ownerId === userId ? (
                 <>
-                  <button className="block w-40 px-3 py-2 text-left hover:bg-accent hover:text-accent-foreground text-sm" onClick={() => { setEditOpen(true); setEditId(menu.id) }}>Edit Server</button>
-                  <button className="block w-40 px-3 py-2 text-left hover:bg-accent hover:text-accent-foreground text-sm text-destructive" onClick={() => { setConfirmOpen(true); setEditId(menu.id) }}>Delete Server</button>
+                  <button className="btn btn-ghost btn-sm justify-start" onClick={() => { setEditOpen(true); setEditId(menu.id) }}>Edit Server</button>
+                  <button className="btn btn-ghost btn-sm justify-start text-error" onClick={() => { setConfirmOpen(true); setEditId(menu.id) }}>Delete Server</button>
                 </>
               ) : (
-                <button className="block w-40 px-3 py-2 text-left hover:bg-accent hover:text-accent-foreground text-sm text-destructive" onClick={() => { setLeaveOpen(true); setEditId(menu.id) }}>Leave Server</button>
+                <button className="btn btn-ghost btn-sm justify-start text-error" onClick={() => { setLeaveOpen(true); setEditId(menu.id) }}>Leave Server</button>
               )}
             </>
           )}
@@ -110,7 +117,7 @@ export default function ServerSidebar() {
         }}
       />
       <div className="mt-2">
-        <button className="flex h-12 w-12 items-center justify-center rounded-2xl bg-card text-xl hover:bg-card/80" onClick={() => setCreateOpen(true)}>+</button>
+        <button className="btn btn-circle btn-outline h-12 min-h-12 w-12 border-base-300 text-xl" onClick={() => setCreateOpen(true)}>+</button>
       </div>
       <CreateServerModal 
         open={createOpen} 

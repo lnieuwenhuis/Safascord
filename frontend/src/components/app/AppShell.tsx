@@ -61,7 +61,7 @@ export default function AppShell({
     <>
       <div 
         className={cn(
-          "grid h-dvh overflow-hidden bg-background text-foreground transition-all duration-300 ease-in-out",
+          "grid h-dvh overflow-hidden bg-base-100/55 text-base-content transition-all duration-300 ease-in-out",
           "grid-cols-[1fr]",
           "md:grid-cols-[64px_260px_1fr]",
           variant === "guild" && showUserList 
@@ -70,10 +70,10 @@ export default function AppShell({
         )}
       >
         {/* Desktop Sidebars */}
-        <div className="hidden md:block h-full overflow-hidden">
+        <div className="hidden h-full overflow-hidden md:block">
           <ServerSidebar />
         </div>
-        <div className="hidden md:block h-full overflow-hidden">
+        <div className="hidden h-full overflow-hidden md:block">
           <Sidebar {...sidebarProps} />
         </div>
 
@@ -95,7 +95,7 @@ export default function AppShell({
 
         {/* Desktop User List */}
         {variant !== "dm" && showUserList && (
-          <div className="hidden lg:flex h-full overflow-hidden">
+          <div className="hidden h-full overflow-hidden lg:flex">
             <UserList serverId={guildId} channelId={channelId} className="w-full border-l" />
           </div>
         )}
@@ -107,7 +107,7 @@ export default function AppShell({
           <div className="shrink-0">
              <ServerSidebar />
           </div>
-          <div className="grow overflow-hidden bg-sidebar">
+          <div className="grow overflow-hidden bg-base-100/95">
              <Sidebar {...sidebarProps} />
           </div>
         </div>

@@ -29,7 +29,7 @@ export default function UserList({ serverId, channelId, className }: { serverId?
 
   return (
     <>
-      <aside className={cn("flex flex-col border-l border-sidebar-border bg-sidebar p-3 text-sidebar-foreground h-full", className)}>
+      <aside className={cn("flex h-full flex-col border-l border-sidebar-border bg-sidebar/95 p-3 text-sidebar-foreground backdrop-blur-sm", className)}>
         <div className="flex-1 space-y-6 overflow-y-auto min-h-0">
           {groups.map((g, idx) => (
             <div key={idx}>
@@ -50,7 +50,7 @@ export default function UserList({ serverId, channelId, className }: { serverId?
                   return (
                     <li 
                       key={u.username} 
-                      className="flex items-center gap-2 rounded px-2 py-1.5 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground cursor-pointer group opacity-90 hover:opacity-100"
+                      className="group flex cursor-pointer items-center gap-2 rounded-lg border border-transparent px-2 py-1.5 opacity-90 hover:border-base-300 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground hover:opacity-100"
                       onClick={(e) => {
                         setSelectedUserId(userId)
                         setSelectedUserRect(e.currentTarget.getBoundingClientRect())

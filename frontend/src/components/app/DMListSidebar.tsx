@@ -19,14 +19,14 @@ export default function DMListSidebar() {
   }, [token])
 
   return (
-    <aside className="flex h-dvh w-full flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground">
+    <aside className="flex h-dvh w-full flex-col border-r border-sidebar-border bg-sidebar/95 text-sidebar-foreground backdrop-blur-sm">
       <div className="px-3 py-3">
-        <div className="mb-3 px-2 text-sm font-semibold">Direct Messages</div>
+        <div className="mb-3 rounded-xl border border-base-300/70 bg-base-100/60 px-3 py-2 text-sm font-semibold">Direct Messages</div>
         <ul className="max-h-full space-y-1">
           {dms.map((dm) => (
             <li
               key={dm.id}
-              className="flex cursor-pointer items-center gap-2 rounded px-2 py-1 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+              className="flex cursor-pointer items-center gap-2 rounded-lg border border-transparent px-2 py-1.5 hover:border-base-300 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
               onClick={() => navigate(`/channels/@me/${dm.id}`)}
             >
               <div className="relative h-6 w-6">
