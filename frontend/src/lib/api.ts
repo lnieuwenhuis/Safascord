@@ -31,6 +31,22 @@ const configuredWsBase = (import.meta.env.VITE_WS_BASE as string | undefined)?.r
 export const API_BASE = configuredApiBase || (import.meta.env.DEV ? "http://localhost:4000/api" : "/api")
 export const WS_BASE = configuredWsBase || (import.meta.env.DEV ? "ws://localhost:4001/ws" : `${window.location.protocol === "https:" ? "wss://" : "ws://"}${window.location.host}/ws`)
 
+function resolveSocketWsUrl(candidate?: string): string {
+  if (!candidate) return WS_BASE
+  try {
+    const parsed = new URL(candidate)
+    const isWsProtocol = parsed.protocol === "ws:" || parsed.protocol === "wss:"
+    if (!isWsProtocol) return WS_BASE
+
+    const isLocalhostTarget = parsed.hostname === "localhost" || parsed.hostname === "127.0.0.1"
+    if (!import.meta.env.DEV && isLocalhostTarget) return WS_BASE
+
+    return candidate
+  } catch {
+    return WS_BASE
+  }
+}
+
 export function getFullUrl(url: string | null | undefined): string | null {
   if (!url) return null
   if (url.startsWith("http") || url.startsWith("data:")) return url
@@ -244,7 +260,14 @@ export const api = {
     if (guildId) url += `&serverId=${encodeURIComponent(guildId)}`
     return get<MessagesResponse>(url, { headers: { Authorization: `Bearer ${token}` } })
   },
-  socketInfo: (channel: string) => get<SocketInfoResponse>(`/socket-info?channel=${encodeURIComponent(channel)}`),
+  socketInfo: async (channel: string) => {
+    try {
+      const info = await get<SocketInfoResponse>(`/socket-info?channel=${encodeURIComponent(channel)}`)
+      return { exists: !!info.exists, wsUrl: resolveSocketWsUrl(info.wsUrl) }
+    } catch {
+      return { exists: false, wsUrl: WS_BASE }
+    }
+  },
   sendMessage: async (token: string, channel: string, content: string, guildId?: string, attachmentUrl?: string) => {
     return request<MessageResponse>("/messages", {
       method: "POST",

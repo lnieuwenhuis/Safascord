@@ -8,6 +8,7 @@ import { cn } from "@/lib/utils"
 import { useNotifications } from "../NotificationProvider"
 import UserProfileDialog from "./UserProfileDialog"
 import type { Message, UserSummary } from "@/types"
+import { useAppCacheStore } from "@/stores/cacheStore"
 
 interface ChatPanelProps {
   variant: "guild" | "dm"
@@ -105,6 +106,8 @@ function AttachmentBubble({ url }: { url: string }) {
 
 export default function ChatPanel({ variant, channelName, channelId, guildName, guildId, onMobileMenu, onUserListToggle, showUserList, canSend = true, dmUser }: ChatPanelProps) {
   const { markChannelRead } = useNotifications()
+  const channelKey = channelId || channelName
+  const setCachedChannelMessages = useAppCacheStore((state) => state.setChannelMessages)
   const [msgs, setMsgs] = useState<Message[]>([])
   const [text, setText] = useState("")
   const [typing, setTyping] = useState<Set<string>>(new Set())
@@ -134,7 +137,6 @@ export default function ChatPanel({ variant, channelName, channelId, guildName, 
 
   const { user } = useAuth()
   const token = typeof window !== "undefined" ? (localStorage.getItem("token") || "") : ""
-  const channelKey = channelId || channelName
 
   useEffect(() => {
     if (channelKey) {
@@ -143,7 +145,6 @@ export default function ChatPanel({ variant, channelName, channelId, guildName, 
   }, [channelKey, markChannelRead])
   
   useEffect(() => {
-    setMsgs([])
     setTyping(new Set())
     if (variant === "dm" && channelName && token) {
       // Try to find the DM user name
@@ -347,11 +348,24 @@ export default function ChatPanel({ variant, channelName, channelId, guildName, 
     if (!channelKey) return
     let cancelled = false
     const authToken = localStorage.getItem("token") || ""
+    const cachedSnapshot = useAppCacheStore.getState().messagesByChannel[channelKey]
+    const hasCachedSnapshot = !!cachedSnapshot?.loaded
 
-    setMsgs([])
-    setHasMore(true)
-    setLoadingInitial(true)
-    oldestTimestampRef.current = undefined
+    if (hasCachedSnapshot) {
+      setMsgs(cachedSnapshot.messages)
+      setHasMore(cachedSnapshot.hasMore)
+      setLoadingInitial(false)
+      oldestTimestampRef.current = cachedSnapshot.oldestTimestamp
+      requestAnimationFrame(() => {
+        scrollToBottom("auto")
+      })
+    } else {
+      setMsgs([])
+      setHasMore(true)
+      setLoadingInitial(true)
+      oldestTimestampRef.current = undefined
+    }
+
     loadingMoreRef.current = false
     setLoadingMore(false)
     isAtBottomRef.current = true
@@ -381,17 +395,30 @@ export default function ChatPanel({ variant, channelName, channelId, guildName, 
           if (list.scrollHeight > list.clientHeight + 24) break
           if (batch.length === 0) break
         }
+
+        if (!cancelled) {
+          setCachedChannelMessages(channelKey, {
+            messages: merged,
+            hasMore: more,
+            oldestTimestamp: merged[0]?.ts,
+            loaded: true,
+          })
+        }
       } catch (e) {
         console.error("Failed to load messages", e)
         if (!cancelled) {
-          setMsgs([])
-          setHasMore(false)
+          if (!hasCachedSnapshot) {
+            setMsgs([])
+            setHasMore(false)
+          }
         }
       } finally {
         if (!cancelled) {
           setLoadingInitial(false)
-          await nextFrame()
-          scrollToBottom("auto")
+          if (!hasCachedSnapshot) {
+            await nextFrame()
+            scrollToBottom("auto")
+          }
         }
       }
     }
@@ -401,7 +428,17 @@ export default function ChatPanel({ variant, channelName, channelId, guildName, 
     return () => {
       cancelled = true
     }
-  }, [channelKey, guildId, nextFrame, scrollToBottom])
+  }, [channelKey, guildId, nextFrame, scrollToBottom, setCachedChannelMessages])
+
+  useEffect(() => {
+    if (!channelKey || loadingInitial) return
+    setCachedChannelMessages(channelKey, {
+      messages: msgs,
+      hasMore,
+      oldestTimestamp: oldestTimestampRef.current,
+      loaded: true,
+    })
+  }, [channelKey, hasMore, loadingInitial, msgs, setCachedChannelMessages])
 
   useEffect(() => {
     if (!channelKey) return

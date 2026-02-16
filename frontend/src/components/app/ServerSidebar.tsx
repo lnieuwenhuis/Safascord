@@ -6,33 +6,41 @@ import { api, getFullUrl } from "@/lib/api"
 import ConfirmDialog from "./ConfirmDialog"
 import CreateServerModal from "./CreateServerModal"
 import EditServerModal from "./EditServerModal"
-import type { Server } from "@/types"
 import { cn } from "@/lib/utils"
 import { useAuth } from "@/hooks/useAuth"
 import { createPortal } from "react-dom"
+import { useAppCacheStore } from "@/stores/cacheStore"
 
 import Inbox from "./Inbox"
 
 export default function ServerSidebar() {
   const navigate = useNavigate()
-  const [servers, setServers] = useState<Server[]>([])
   const [menu, setMenu] = useState<{ id: string; x: number; y: number } | null>(null)
   const [editOpen, setEditOpen] = useState(false)
   const [createOpen, setCreateOpen] = useState(false)
   const [editId, setEditId] = useState<string | null>(null)
   const [confirmOpen, setConfirmOpen] = useState(false)
   const [leaveOpen, setLeaveOpen] = useState(false)
-  const [userId, setUserId] = useState<string | null>(null)
-  const { token } = useAuth()
+  const servers = useAppCacheStore((state) => state.servers) || []
+  const setCachedServers = useAppCacheStore((state) => state.setServers)
+  const { token, user } = useAuth()
   const authToken = token || (typeof window !== "undefined" ? localStorage.getItem("token") || "" : "")
+  const userId = user?.id || null
   const activeServerId = getSelection().serverId
 
   useEffect(() => {
-    if (authToken) {
-      api.me(authToken).then(r => setUserId(r.user?.id || null)).catch(() => {})
-      api.servers(authToken).then((r) => setServers(r.servers)).catch(() => setServers([]))
+    let cancelled = false
+    if (!authToken) return () => { cancelled = true }
+
+    api.servers(authToken).then((r) => {
+      if (cancelled) return
+      setCachedServers(r.servers)
+    }).catch(() => {})
+
+    return () => {
+      cancelled = true
     }
-  }, [authToken])
+  }, [authToken, setCachedServers])
 
   const openMenu = (id: string, x: number, y: number) => {
     const menuWidth = 176
@@ -120,7 +128,7 @@ export default function ServerSidebar() {
           if (!authToken) return
           if (editId) {
             await api.deleteServer(authToken, editId)
-            setServers((prev) => prev.filter((x) => x.id !== editId))
+            setCachedServers(servers.filter((x) => x.id !== editId))
           }
         }}
       />
@@ -134,7 +142,7 @@ export default function ServerSidebar() {
           if (!authToken || !editId) return
           const res = await api.leaveServer(authToken, editId)
           if (res.left) {
-            setServers((prev) => prev.filter((x) => x.id !== editId))
+            setCachedServers(servers.filter((x) => x.id !== editId))
             navigate('/channels/@me')
           }
         }}
@@ -145,12 +153,12 @@ export default function ServerSidebar() {
       <CreateServerModal 
         open={createOpen} 
         onClose={() => setCreateOpen(false)} 
-        onCreated={(s) => setServers((prev) => [...prev, s])} 
+        onCreated={(s) => setCachedServers([...servers, s])} 
       />
       <EditServerModal
         open={editOpen}
         onClose={() => setEditOpen(false)}
-        onUpdated={(s) => setServers((prev) => prev.map((x) => x.id === s.id ? s : x))}
+        onUpdated={(s) => setCachedServers(servers.map((x) => x.id === s.id ? s : x))}
         initialData={activeServer}
       />
       <div className="mt-auto pb-2 relative z-50">
