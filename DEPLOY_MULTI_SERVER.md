@@ -1,84 +1,53 @@
-# Multi-Server (Docker Swarm) Deployment Guide
+# Railway Scaling Guide
 
-This guide describes how to deploy the application across multiple servers for high availability and horizontal scaling using Docker Swarm.
+This replaces the old Docker Swarm flow.
 
-## Prerequisites
+## Service Topology
 
-1.  **Multiple Servers**: At least 2 servers (1 Manager, 1+ Workers).
-    *   All servers must be on the same private network (low latency).
-2.  **Container Registry**: A place to host your built images (Docker Hub, GHCR, or AWS ECR).
-    *   *Swarm nodes cannot build images; they must pull them from a registry.*
-3.  **Domain Name**: Point your DNS records to the **Manager Node's IP** (or a Load Balancer in front of the swarm).
+- `frontend` service (public): serves web UI
+- `backend` service (public): REST API (`/api/*`)
+- `realtime` service (public): WebSocket endpoint (`/ws`)
+- PostgreSQL plugin (private)
+- Redis plugin (private)
+- S3-compatible object storage (external)
 
-## Setup Steps
+## Horizontal Scaling
 
-### 1. Initialize Swarm
-On the **Manager Node**:
-```bash
-docker swarm init --advertise-addr <MANAGER_PRIVATE_IP>
-```
-This command outputs a join token.
+Railway supports scaling each service independently:
+- Increase `backend` replicas when API latency rises.
+- Increase `realtime` replicas when websocket concurrency rises.
+- Keep `frontend` at 1+ replicas based on traffic.
 
-### 2. Join Workers
-On each **Worker Node**, run the command outputted by the init step:
-```bash
-docker swarm join --token <TOKEN> <MANAGER_IP>:2377
-```
+Because realtime fanout is Redis-backed, websocket events continue to work across multiple realtime replicas.
 
-### 3. Label the Manager Node
-The database and storage services are pinned to the manager node to ensure they find their data volumes.
-```bash
-# Run on Manager
-docker node update --label-add role=manager <HOSTNAME_OF_MANAGER>
-```
-*(Note: Docker automatically adds `node.role==manager`, but explicit labeling can be safer if you customize constraints).*
+## Recommended Production Settings
 
-### 4. Build and Push Images
-Since Swarm nodes pull images, you must build and push them first.
-*   Export your registry URL (e.g., `docker.io/yourusername` or `ghcr.io/yourorg`).
+- Backend:
+  - `PG_POOL_MAX=20` (adjust based on DB limits)
+  - `CORS_ORIGINS=https://cord.safasfly.dev`
+  - `SHOO_BASE_URL=https://shoo.dev`
+  - `SHOO_ISSUER=https://shoo.dev`
+  - `ENABLE_DEBUG_ROUTES=false`
+- Realtime:
+  - `WS_ALLOWED_ORIGINS=https://cord.safasfly.dev`
+- Storage:
+  - `S3_AUTO_INIT=false`
+  - `S3_SET_PUBLIC_POLICY=false`
+  - `S3_SET_LIFECYCLE=false`
 
-```bash
-export DOCKER_REGISTRY=your-registry-url
+## Health Checks
 
-# Login to registry
-docker login
+- Backend readiness endpoint: `/api/ready`
+- Realtime readiness endpoint: `/ready`
 
-# Build and Push
-docker compose -f infra/docker-compose.prod.yml build
-docker compose -f infra/docker-compose.prod.yml push
-```
+Use Railway health checks against these endpoints for auto-restart and rollout safety.
 
-### 5. Deploy the Stack
-On the **Manager Node**:
+## Zero-Downtime Rollout Checklist
 
-1.  **Create .env file**: Copy your `.env` file to the manager node (same variables as Single Server).
-2.  **Deploy**:
-    ```bash
-    # Load env vars and deploy
-    export $(cat .env | xargs) && docker stack deploy -c infra/docker-compose.prod.yml discord-stack
-    ```
-
-### 6. Verification
-Check the status of your stack:
-```bash
-docker stack services discord-stack
-```
-You should see `REPLICAS 3/3` for api and realtime services.
-
-Check logs for a specific service:
-```bash
-docker service logs -f discord-stack_api
-```
-
-## Scaling
-To scale up the API or Realtime services:
-```bash
-docker service scale discord-stack_api=5
-docker service scale discord-stack_realtime=5
-```
-
-## Updates
-To deploy a new version:
-1.  `git pull` on your build machine.
-2.  `docker compose -f infra/docker-compose.prod.yml build && docker compose -f infra/docker-compose.prod.yml push`
-3.  On Manager: `docker stack deploy -c infra/docker-compose.prod.yml discord-stack` (Swarm detects changes and performs a rolling update).
+1. Deploy `realtime` first.
+2. Deploy `backend`.
+3. Deploy `frontend`.
+4. Confirm:
+   - New message send/receive works in at least two browser clients.
+   - Attachments upload and render correctly.
+   - DM notifications arrive in realtime.

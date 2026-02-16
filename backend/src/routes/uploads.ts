@@ -135,9 +135,10 @@ export async function uploadRoutes(app: FastifyInstance) {
         ContentType: data.mimetype
       }))
       // Use proxy URL if configured, otherwise default
+      const publicBaseOverride = process.env.S3_PUBLIC_BASE_URL || ""
       const baseUrl = process.env.PROXY_UPLOADS === "true" 
          ? `${process.env.API_URL || ""}/api/uploads`
-         : `${STORAGE_PUBLIC_URL}/${BUCKET_NAME}`
+         : (publicBaseOverride || `${STORAGE_PUBLIC_URL.replace(/\/$/, "")}/${BUCKET_NAME}`)
          
       const url = `${baseUrl}/${name}`
       return { url }

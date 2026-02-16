@@ -1,32 +1,36 @@
-import { Pool } from "pg"
+import { Pool, type PoolConfig } from "pg"
 
-export const pool = new Pool({ connectionString: process.env.DATABASE_URL })
+function isTrue(value: string | undefined, defaultValue = false) {
+  if (value == null) return defaultValue
+  return value.toLowerCase() === "true"
+}
 
-pool.on('error', (err, client) => {
-  console.error('Unexpected error on idle client', err)
+const connectionString = process.env.DATABASE_URL
+if (!connectionString) {
+  throw new Error("DATABASE_URL is required")
+}
+
+const config: PoolConfig = {
+  connectionString,
+  max: Number(process.env.PG_POOL_MAX || 20),
+  connectionTimeoutMillis: Number(process.env.PG_CONNECT_TIMEOUT_MS || 10000),
+  idleTimeoutMillis: Number(process.env.PG_IDLE_TIMEOUT_MS || 30000),
+}
+
+if (isTrue(process.env.DATABASE_SSL, false)) {
+  config.ssl = { rejectUnauthorized: false }
+}
+
+export const pool = new Pool(config)
+
+pool.on("error", (err) => {
+  console.error("Unexpected error on idle pg client", err)
 })
 
-pool.on('connect', (client) => {
-  console.log('New client connected to database pool')
-})
+export async function checkDatabaseConnection() {
+  await pool.query("SELECT 1")
+}
 
-// Test the connection immediately and run migrations
-pool.query('SELECT NOW()').then(async (res) => {
-  console.log('Database connection test successful:', res.rows[0])
-  
-  // Simple migration to add attachment_url if not exists
-  try {
-    await pool.query(`ALTER TABLE messages ADD COLUMN IF NOT EXISTS attachment_url TEXT;`)
-    console.log("Migration: Added attachment_url to messages table")
-    
-    await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS custom_background_url TEXT;`)
-    console.log("Migration: Added custom_background_url to users table")
-
-    await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS custom_background_opacity NUMERIC DEFAULT 0.85;`)
-    console.log("Migration: Added custom_background_opacity to users table")
-  } catch (e) {
-    console.error("Migration failed:", e)
-  }
-}).catch((err) => {
-  console.error('Database connection test failed:', err)
-})
+export async function closeDatabasePool() {
+  await pool.end()
+}

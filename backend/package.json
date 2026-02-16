@@ -2,6 +2,9 @@
   "name": "api",
   "version": "0.0.1",
   "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "start": "node dist/server.js",
@@ -12,10 +15,10 @@
     "@fastify/cors": "^8.3.0",
     "@fastify/multipart": "^7.7.3",
     "@fastify/static": "^6.5.0",
-    "@workos-inc/node": "^7.74.2",
     "bcryptjs": "^2.4.3",
     "fastify": "^4.29.1",
     "ioredis": "^5.8.2",
+    "jose": "^6.1.0",
     "jsonwebtoken": "^9.0.2",
     "pg": "^8.11.3"
   },

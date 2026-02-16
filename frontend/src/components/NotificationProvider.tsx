@@ -15,16 +15,18 @@ interface NotificationContextType {
 const NotificationContext = createContext<NotificationContextType | undefined>(undefined)
 
 export function NotificationProvider({ children }: { children: React.ReactNode }) {
-  const { user, isAuthenticated } = useAuth()
+  const { user, isAuthenticated, token } = useAuth()
   const [notifications, setNotifications] = useState<AppNotification[]>([])
   const wsRef = useRef<WebSocket | null>(null)
-  const [retryCount, setRetryCount] = useState(0)
+  const retryAttemptRef = useRef(0)
+  const reconnectTimeoutRef = useRef<number | null>(null)
 
   // Fetch initial notifications
   useEffect(() => {
     if (isAuthenticated && user) {
-      const token = localStorage.getItem("token") || ""
-      api.getNotifications(token).then(res => {
+      const authToken = token || localStorage.getItem("token") || ""
+      if (!authToken) return
+      api.getNotifications(authToken).then(res => {
         if (res.notifications) {
            setNotifications(res.notifications)
         }
@@ -33,7 +35,7 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setNotifications([])
     }
-  }, [isAuthenticated, user])
+  }, [isAuthenticated, user, token])
 
   // WebSocket Connection for Notifications
   useEffect(() => {
@@ -42,80 +44,107 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
          wsRef.current.close()
          wsRef.current = null
        }
+       if (reconnectTimeoutRef.current) {
+         window.clearTimeout(reconnectTimeoutRef.current)
+         reconnectTimeoutRef.current = null
+       }
        return
     }
 
-    let ws: WebSocket | null = null
-    
-    // We use the same WS endpoint, but subscribe to `user:${userId}`
-    // We need to get the WS URL first. We can reuse the logic from ChatPanel or just assume the endpoint.
-    // Let's use api.socketInfo to get the URL, passing a dummy channel or our user channel.
-    // The backend socket-info endpoint just returns the base WS URL essentially.
-    
+    let cancelled = false
     const userChannel = `user:${user.id}`
-    
-    api.socketInfo(userChannel).then(info => {
-       ws = new WebSocket(info.wsUrl)
-       wsRef.current = ws
-       
-       ws.onopen = () => {
-         ws?.send(JSON.stringify({ type: "subscribe", channel: userChannel }))
-       }
-       
-       ws.onmessage = (ev) => {
-         try {
-           const data = JSON.parse(String(ev.data))
-          if (data.type === "notification" && data.notification) {
-            const n = data.notification as AppNotification
-            setNotifications(prev => [n, ...prev])
-            
-            // Play sound or visual cue if not quiet mode
-             // The notification object has a `quiet` property from backend based on user settings
-             if (!n.quiet) {
-                // We can trigger a sound here if desired
-                // new Audio('/notification.mp3').play().catch(() => {})
-             }
-           }
-         } catch (e) {
-           console.error("Error processing notification:", e)
-         }
-       }
-       
-       ws.onclose = () => {
-         // Simple retry logic
-         setTimeout(() => setRetryCount(c => c + 1), 3000)
-       }
-    })
+
+    const scheduleReconnect = () => {
+      if (cancelled) return
+      const delay = Math.min(1000 * (2 ** retryAttemptRef.current), 10000)
+      retryAttemptRef.current += 1
+      reconnectTimeoutRef.current = window.setTimeout(() => {
+        connect()
+      }, delay)
+    }
+
+    const connect = async () => {
+      try {
+        const info = await api.socketInfo(userChannel)
+        if (cancelled) return
+
+        const ws = new WebSocket(info.wsUrl)
+        wsRef.current = ws
+
+        ws.onopen = () => {
+          retryAttemptRef.current = 0
+          ws.send(JSON.stringify({ type: "subscribe", channel: userChannel }))
+        }
+
+        ws.onmessage = (ev) => {
+          try {
+            const data = JSON.parse(String(ev.data))
+            if (data.type === "notification" && data.notification) {
+              const n = data.notification as AppNotification
+              setNotifications((prev) => [n, ...prev])
+            }
+          } catch (e) {
+            console.error("Error processing notification:", e)
+          }
+        }
+
+        ws.onerror = () => {
+          try {
+            ws.close()
+          } catch (e) {
+            console.error("Failed to close notifications socket", e)
+          }
+        }
+
+        ws.onclose = () => {
+          if (wsRef.current === ws) wsRef.current = null
+          scheduleReconnect()
+        }
+      } catch {
+        scheduleReconnect()
+      }
+    }
+
+    connect()
 
     return () => {
+      cancelled = true
+      if (reconnectTimeoutRef.current) {
+        window.clearTimeout(reconnectTimeoutRef.current)
+        reconnectTimeoutRef.current = null
+      }
       if (wsRef.current) wsRef.current.close()
     }
-  }, [isAuthenticated, user, retryCount])
+  }, [isAuthenticated, user])
 
   const markRead = useCallback(async (id: string) => {
-    const token = localStorage.getItem("token") || ""
+    const authToken = token || localStorage.getItem("token") || ""
+    if (!authToken) return
     // Optimistic update
     setNotifications(prev => prev.map(n => n.id === id ? { ...n, read: true } : n))
-    await api.markNotificationRead(token, id)
-  }, [])
+    await api.markNotificationRead(authToken, id)
+  }, [token])
 
   const markChannelRead = useCallback(async (channelId: string) => {
-    const token = localStorage.getItem("token") || ""
+    const authToken = token || localStorage.getItem("token") || ""
+    if (!authToken) return
     setNotifications(prev => prev.map(n => n.channelId === channelId ? { ...n, read: true } : n))
-    await api.markChannelNotificationsRead(token, channelId)
-  }, [])
+    await api.markChannelNotificationsRead(authToken, channelId)
+  }, [token])
 
   const markAllRead = useCallback(async () => {
-    const token = localStorage.getItem("token") || ""
+    const authToken = token || localStorage.getItem("token") || ""
+    if (!authToken) return
     setNotifications(prev => prev.map(n => ({ ...n, read: true })))
-    await api.markAllNotificationsRead(token)
-  }, [])
+    await api.markAllNotificationsRead(authToken)
+  }, [token])
 
   const deleteNotification = useCallback(async (id: string) => {
-    const token = localStorage.getItem("token") || ""
+    const authToken = token || localStorage.getItem("token") || ""
+    if (!authToken) return
     setNotifications(prev => prev.filter(n => n.id !== id))
-    await api.deleteNotification(token, id)
-  }, [])
+    await api.deleteNotification(authToken, id)
+  }, [token])
 
   const unreadCount = notifications.filter(n => !n.read).length
 

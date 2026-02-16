@@ -25,8 +25,11 @@ import type {
   Notification
 } from "@/types"
 
-export const API_BASE = import.meta.env.VITE_API_BASE || (import.meta.env.DEV ? "http://localhost/api" : "/api")
-export const WS_BASE = import.meta.env.VITE_WS_BASE || (import.meta.env.DEV ? "ws://localhost/ws" : `${window.location.protocol === "https:" ? "wss://" : "ws://"}${window.location.host}/ws`)
+const configuredApiBase = (import.meta.env.VITE_API_BASE as string | undefined)?.replace(/\/$/, "")
+const configuredWsBase = (import.meta.env.VITE_WS_BASE as string | undefined)?.replace(/\/$/, "")
+
+export const API_BASE = configuredApiBase || (import.meta.env.DEV ? "http://localhost:4000/api" : "/api")
+export const WS_BASE = configuredWsBase || (import.meta.env.DEV ? "ws://localhost:4001/ws" : `${window.location.protocol === "https:" ? "wss://" : "ws://"}${window.location.host}/ws`)
 
 export function getFullUrl(url: string | null | undefined): string | null {
   if (!url) return null
@@ -42,8 +45,15 @@ async function request<T>(path: string, opts?: RequestInit): Promise<T> {
   if (res.status === 401) {
     if (typeof window !== "undefined") window.dispatchEvent(new Event("auth:unauthorized"))
   }
-  if (!res.ok) throw new Error(String(res.status))
-  return res.json()
+  const isJson = (res.headers.get("content-type") || "").includes("application/json")
+  const payload = isJson ? await res.json() : await res.text()
+  if (!res.ok) {
+    const err = typeof payload === "object" && payload && "error" in payload
+      ? String((payload as { error?: string }).error || res.status)
+      : String(payload || res.status)
+    throw new Error(err)
+  }
+  return payload as T
 }
 
 async function get<T>(path: string, opts?: RequestInit): Promise<T> {
@@ -199,14 +209,11 @@ export const api = {
       body: JSON.stringify({ identifier, password }),
     })
   },
-  getAuthUrl: async (redirectUri: string) => {
-    return request<{ url: string; error?: string }>(`/auth/workos-url?redirectUri=${encodeURIComponent(redirectUri)}`)
-  },
-  authWithCode: async (code: string) => {
-    return request<AuthResponse>("/auth/workos-callback", {
+  authWithShoo: async (idToken: string) => {
+    return request<AuthResponse>("/auth/shoo", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ code }),
+      body: JSON.stringify({ idToken }),
     })
   },
   me: (token: string) => get<UserResponse>("/me", { headers: { Authorization: `Bearer ${token}` } }),
