@@ -10,6 +10,18 @@ type ObjectType = {
   LastModified: Date;
 }
 
+function readEnv(...keys: string[]) {
+  for (const key of keys) {
+    const raw = process.env[key]
+    if (!raw) continue
+    const trimmed = raw.trim()
+    if (!trimmed) continue
+    const unquoted = trimmed.replace(/^"(.*)"$/, "$1").replace(/^'(.*)'$/, "$1")
+    if (unquoted) return unquoted
+  }
+  return ""
+}
+
 function extensionFromMimeType(mimeType?: string) {
   if (!mimeType) return ""
   const map: Record<string, string> = {
@@ -155,20 +167,25 @@ export async function uploadRoutes(app: FastifyInstance) {
         ContentType: data.mimetype
       }))
       // Use proxy URL if configured, otherwise default
-      const publicBaseOverride = process.env.S3_PUBLIC_BASE_URL || ""
+      const publicBaseOverride = readEnv("S3_PUBLIC_BASE_URL", "S3_PUBLIC_URL").replace(/\/+$/, "")
+      const apiUrl = readEnv("API_URL").replace(/\/+$/, "")
+      const normalizedApiOrigin = apiUrl.replace(/\/api$/i, "")
       const baseUrl = process.env.PROXY_UPLOADS === "true" 
-         ? `${process.env.API_URL || ""}/api/uploads`
+         ? `${normalizedApiOrigin}/api/uploads`
          : (publicBaseOverride || `${STORAGE_PUBLIC_URL.replace(/\/$/, "")}/${BUCKET_NAME}`)
          
       const url = `${baseUrl}/${name}`
       return { url }
     } catch (e) {
+      const err = e as Error & { Code?: string; code?: string; $metadata?: { httpStatusCode?: number } }
+      const endpoint = readEnv("S3_ENDPOINT", "AWS_ENDPOINT_URL_S3", "ENDPOINT_URL", "RAILWAY_BUCKET_ENDPOINT", "BUCKET_ENDPOINT", "BUCKET_ENDPOINT_URL")
+      const region = readEnv("S3_REGION", "AWS_REGION", "AWS_DEFAULT_REGION", "REGION", "BUCKET_REGION", "RAILWAY_BUCKET_REGION")
       req.log.error(
         {
           err: e,
           bucket: BUCKET_NAME,
-          endpoint: process.env.S3_ENDPOINT || process.env.AWS_ENDPOINT_URL_S3 || process.env.ENDPOINT_URL,
-          region: process.env.S3_REGION || process.env.AWS_REGION || process.env.REGION,
+          endpoint,
+          region,
         },
         "Upload failed"
       )
@@ -177,7 +194,13 @@ export async function uploadRoutes(app: FastifyInstance) {
       // For now, we can trigger cleanup asynchronously on failure to help next time.
       cleanupStorage().catch(console.error)
 
-      const reason = e instanceof Error ? e.message : String(e)
+      const reasonParts = [
+        err.name,
+        err.message,
+        err.Code || err.code,
+        err.$metadata?.httpStatusCode ? `http:${err.$metadata.httpStatusCode}` : undefined,
+      ].filter(Boolean)
+      const reason = reasonParts.length > 0 ? reasonParts.join(" | ") : String(e)
       return reply.status(500).send({ error: "Upload failed", reason })
     }
   })

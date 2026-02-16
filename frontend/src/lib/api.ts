@@ -49,7 +49,12 @@ async function request<T>(path: string, opts?: RequestInit): Promise<T> {
   const payload = isJson ? await res.json() : await res.text()
   if (!res.ok) {
     const err = typeof payload === "object" && payload && "error" in payload
-      ? String((payload as { error?: string }).error || res.status)
+      ? (() => {
+          const p = payload as { error?: string; reason?: string }
+          const errorText = String(p.error || res.status)
+          const reasonText = p.reason ? String(p.reason) : ""
+          return reasonText ? `${errorText}: ${reasonText}` : errorText
+        })()
       : String(payload || res.status)
     throw new Error(err)
   }
