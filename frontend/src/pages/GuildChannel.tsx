@@ -52,13 +52,24 @@ export default function GuildChannel() {
       setServerName("Select a server")
       return
     }
+
+    const cached = cachedServers?.find((x) => String(x.id) === String(sid))
+    if (cached) {
+      setServerName(cached.name)
+      return
+    }
+
     const token = typeof window !== "undefined" ? localStorage.getItem("token") || "" : ""
+    if (!token) {
+      setServerName(`Server ${sid}`)
+      return
+    }
 
     api.servers(token).then((r) => {
       const s = r.servers.find((x) => String(x.id) === String(sid))
       setServerName(s?.name || `Server ${sid}`)
     }).catch(() => setServerName(`Server ${sid}`))
-  }, [sid])
+  }, [sid, cachedServers])
 
   useEffect(() => {
     if (!sid || !cachedSections) return
@@ -82,6 +93,7 @@ export default function GuildChannel() {
       setResolvedChannelName("")
       return
     }
+    if (cachedSections && cachedSections.length > 0) return
 
     const token = typeof window !== "undefined" ? localStorage.getItem("token") || "" : ""
     const resolveChannel = async () => {
@@ -117,7 +129,7 @@ export default function GuildChannel() {
     return () => {
       cancelled = true
     }
-  }, [sid, routeChannel, navigate])
+  }, [sid, routeChannel, navigate, cachedSections])
 
   const mode = resolvedChannelId ? "chat" : "overview"
   return (

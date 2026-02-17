@@ -108,6 +108,7 @@ export default function ChatPanel({ variant, channelName, channelId, guildName, 
   const { markChannelRead } = useNotifications()
   const channelKey = channelId || channelName
   const setCachedChannelMessages = useAppCacheStore((state) => state.setChannelMessages)
+  const cachedDms = useAppCacheStore((state) => state.dms)
   const myRoleColor = useAppCacheStore((state) => (guildId ? state.myRoleColorByServer[guildId] : undefined))
   const setMyRoleColorForServer = useAppCacheStore((state) => state.setMyRoleColorForServer)
   const [msgs, setMsgs] = useState<Message[]>([])
@@ -186,6 +187,11 @@ export default function ChatPanel({ variant, channelName, channelId, guildName, 
   useEffect(() => {
     setTyping(new Set())
     if (variant === "dm" && channelName && token) {
+      const cachedDm = (cachedDms || []).find((dm) => dm.id === channelName)
+      if (cachedDm) {
+        setLocalDmUser(cachedDm.user)
+        return
+      }
       // Try to find the DM user name
       api.getDMs(token).then(res => {
         const dm = res.dms.find(d => d.id === channelName)
@@ -196,7 +202,7 @@ export default function ChatPanel({ variant, channelName, channelId, guildName, 
     } else {
       setLocalDmUser(null)
     }
-  }, [variant, channelName, token])
+  }, [variant, channelName, token, cachedDms])
 
   const [showMentionMenu, setShowMentionMenu] = useState(false)
   const [mentionQuery, setMentionQuery] = useState("")

@@ -18,7 +18,6 @@ export default function ChannelSidebar({ guildId, activeChannelId }: { guildId?:
   const { token } = useAuth()
   const cachedServers = useAppCacheStore((state) => state.servers)
   const cachedSections = useAppCacheStore((state) => (guildId ? state.channelsByServer[guildId] : undefined))
-  const setCachedServers = useAppCacheStore((state) => state.setServers)
   const setCachedServerChannels = useAppCacheStore((state) => state.setServerChannels)
   const sections = cachedSections || []
   const server = (cachedServers || []).find((x) => String(x.id) === String(guildId || "")) || null
@@ -39,28 +38,17 @@ export default function ChannelSidebar({ guildId, activeChannelId }: { guildId?:
   
   const authToken = token || (typeof window !== "undefined" ? localStorage.getItem("token") || "" : "")
 
-  const loadChannels = useCallback(() => {
+  const loadChannels = useCallback((force = false) => {
     if (!guildId || !authToken) return
+    if (!force && cachedSections) return
     api.channels(guildId, authToken).then((r) => {
       setCachedServerChannels(guildId, r.sections)
     }).catch(() => {})
-  }, [guildId, authToken, setCachedServerChannels])
+  }, [guildId, authToken, cachedSections, setCachedServerChannels])
 
   useEffect(() => {
-    loadChannels()
+    loadChannels(false)
   }, [loadChannels])
-
-  useEffect(() => {
-    if (!authToken) return
-    let cancelled = false
-    api.servers(authToken).then((r) => {
-      if (cancelled) return
-      setCachedServers(r.servers)
-    }).catch(() => {})
-    return () => {
-      cancelled = true
-    }
-  }, [authToken, setCachedServers])
 
   const handleEditChannel = async (channelName: string) => {
      if (!guildId) return
@@ -227,7 +215,7 @@ export default function ChannelSidebar({ guildId, activeChannelId }: { guildId?:
          onClose={() => { setCreateChannelOpen(false); setEditChannelId(null) }}
          serverId={guildId || ""}
          initialData={editChannelId ? { id: editChannelId, name: editChannelName } : undefined}
-         onSuccess={() => loadChannels()}
+         onSuccess={() => loadChannels(true)}
       />
 
       {/* Create Category Modal */}
@@ -241,7 +229,7 @@ export default function ChannelSidebar({ guildId, activeChannelId }: { guildId?:
               <button className="btn btn-primary btn-sm" onClick={async () => {
                  if (!guildId || !newCategoryName) return
                  await api.createCategory(authToken, guildId, newCategoryName)
-                 loadChannels()
+                 loadChannels(true)
                  setCreateCategoryOpen(false)
               }}>Create</button>
             </div>
@@ -261,7 +249,7 @@ export default function ChannelSidebar({ guildId, activeChannelId }: { guildId?:
           if (confirmAction === "delete" && editChannel) {
             const idRes = await api.channelIdByName(guildId, editChannel)
             if (idRes.id) await api.deleteChannel(authToken, idRes.id)
-            loadChannels()
+            loadChannels(true)
           }
         }}
       />
