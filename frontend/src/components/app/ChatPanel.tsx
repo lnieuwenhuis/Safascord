@@ -566,7 +566,7 @@ export default function ChatPanel({ variant, channelName, channelId, guildName, 
             const shouldAutoScroll = isNearBottom()
             setMsgs((prevMsgs) => {
               if (prevMsgs.some((x) => x.id === d.message!.id)) return prevMsgs
-              return [...prevMsgs, {
+              const incomingMessage: Message = {
                 id: d.message!.id,
                 user: d.user || "User",
                 userAvatar: d.userAvatar,
@@ -575,7 +575,24 @@ export default function ChatPanel({ variant, channelName, channelId, guildName, 
                 attachmentUrl: d.message!.attachmentUrl,
                 ts: d.message!.ts || new Date().toISOString(),
                 roleColor: d.roleColor || (variant === "guild" && d.userId === user?.id ? myRoleColor : undefined),
-              }]
+              }
+
+              // Reconcile optimistic local messages immediately to avoid a temporary duplicate.
+              if (d.userId && user?.id && d.userId === user.id) {
+                for (let i = prevMsgs.length - 1; i >= 0; i -= 1) {
+                  const candidate = prevMsgs[i]
+                  if (!candidate.id.startsWith("local:")) continue
+                  if (candidate.userId !== user.id) continue
+                  if (candidate.text !== incomingMessage.text) continue
+                  if ((candidate.attachmentUrl || "") !== (incomingMessage.attachmentUrl || "")) continue
+
+                  const next = [...prevMsgs]
+                  next[i] = incomingMessage
+                  return next
+                }
+              }
+
+              return [...prevMsgs, incomingMessage]
             })
             if (shouldAutoScroll) {
               requestAnimationFrame(() => {
