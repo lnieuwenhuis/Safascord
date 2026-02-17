@@ -73,9 +73,12 @@
 
 @layer base {
   html,
-  body,
+  body {
+    min-height: 100%;
+  }
+
   #root {
-    height: 100%;
+    min-height: 100%;
   }
 
   * {
@@ -98,7 +101,8 @@
       radial-gradient(1200px 550px at 10% -10%, rgba(41, 151, 255, 0.3), transparent 60%),
       radial-gradient(850px 500px at 110% 12%, rgba(91, 33, 182, 0.36), transparent 62%),
       linear-gradient(180deg, #040816 0%, #07102b 42%, #050915 100%);
-    background-attachment: fixed;
+    /* Use scroll attachment by default to avoid Safari clipping artifacts. */
+    background-attachment: scroll;
     position: relative;
   }
 
