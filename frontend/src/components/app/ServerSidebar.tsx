@@ -10,6 +10,7 @@ import { cn } from "@/lib/utils"
 import { useAuth } from "@/hooks/useAuth"
 import { createPortal } from "react-dom"
 import { useAppCacheStore } from "@/stores/cacheStore"
+import { useNotifications } from "../NotificationProvider"
 
 import Inbox from "./Inbox"
 
@@ -23,10 +24,18 @@ export default function ServerSidebar() {
   const [leaveOpen, setLeaveOpen] = useState(false)
   const servers = useAppCacheStore((state) => state.servers) || []
   const setCachedServers = useAppCacheStore((state) => state.setServers)
+  const { notifications } = useNotifications()
   const { token, user } = useAuth()
   const authToken = token || (typeof window !== "undefined" ? localStorage.getItem("token") || "" : "")
   const userId = user?.id || null
   const activeServerId = getSelection().serverId
+
+  const getUnreadCountForServer = (serverId: string) =>
+    notifications.filter((n) => !n.read && n.serverId === serverId).length
+
+  const dmUnreadCount = notifications.filter(
+    (n) => !n.read && (n.sourceType === "dm" || n.channelType === "dm"),
+  ).length
 
   useEffect(() => {
     let cancelled = false
@@ -57,41 +66,56 @@ export default function ServerSidebar() {
   const activeServer = editId ? servers.find(s => s.id === editId) || null : null
   return (
     <aside className="flex h-dvh w-16 flex-col items-center gap-2 overflow-y-auto overflow-x-visible bg-slate-950/88 px-2 py-3 text-slate-100">
-      <Button
-        variant="default"
-        size="icon"
-        className="rounded-2xl border border-cyan-300/30 shadow-md"
-        onClick={() => navigate('/channels/@me')}
-      >
-        C
-      </Button>
-      <div className="h-px w-8 bg-cyan-300/25" />
-      {servers.map(s => (
-        <button
-          key={s.id}
-          className={cn(
-            "group relative flex h-12 w-12 items-center justify-center overflow-hidden rounded-2xl border text-xs font-semibold transition-all",
-            activeServerId === s.id
-              ? "border-cyan-300/60 bg-cyan-400/18 text-cyan-100 shadow-md"
-              : "border-cyan-300/25 bg-slate-900/80 text-slate-100/90 hover:border-cyan-300/45 hover:bg-cyan-400/10"
-          )}
-          onClick={() => {
-            setSelection({ serverId: String(s.id), channelId: undefined })
-            navigate('/server')
-          }}
-          onContextMenu={(e) => {
-            e.preventDefault()
-            openMenu(s.id, e.clientX, e.clientY)
-            setEditId(s.id)
-          }}
+      <div className="relative">
+        <Button
+          variant="default"
+          size="icon"
+          className="rounded-2xl border border-cyan-300/30 shadow-md"
+          onClick={() => navigate('/channels/@me')}
         >
-          {s.iconUrl ? (
-            <img src={getFullUrl(s.iconUrl) || s.iconUrl} alt={s.name} className="h-full w-full object-cover" />
-          ) : (
-            s.name.substring(0, 2)
+          C
+        </Button>
+        {dmUnreadCount > 0 && (
+          <div className="absolute -right-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white ring-2 ring-slate-950">
+            {dmUnreadCount > 99 ? "99+" : dmUnreadCount}
+          </div>
+        )}
+      </div>
+      <div className="h-px w-8 bg-cyan-300/25" />
+      {servers.map(s => {
+        const unreadServer = getUnreadCountForServer(s.id)
+        return (
+        <div key={s.id} className="relative">
+          <button
+            className={cn(
+              "group relative flex h-12 w-12 items-center justify-center overflow-hidden rounded-2xl border text-xs font-semibold transition-all",
+              activeServerId === s.id
+                ? "border-cyan-300/60 bg-cyan-400/18 text-cyan-100 shadow-md"
+                : "border-cyan-300/25 bg-slate-900/80 text-slate-100/90 hover:border-cyan-300/45 hover:bg-cyan-400/10"
+            )}
+            onClick={() => {
+              setSelection({ serverId: String(s.id), channelId: undefined })
+              navigate('/server')
+            }}
+            onContextMenu={(e) => {
+              e.preventDefault()
+              openMenu(s.id, e.clientX, e.clientY)
+              setEditId(s.id)
+            }}
+          >
+            {s.iconUrl ? (
+              <img src={getFullUrl(s.iconUrl) || s.iconUrl} alt={s.name} className="h-full w-full object-cover" />
+            ) : (
+              s.name.substring(0, 2)
+            )}
+          </button>
+          {unreadServer > 0 && (
+            <div className="absolute -right-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white ring-2 ring-slate-950">
+              {unreadServer > 99 ? "99+" : unreadServer}
+            </div>
           )}
-        </button>
-      ))}
+        </div>
+      )})}
       {menu && createPortal(
         <>
           <div className="fixed inset-0 z-[320]" onClick={() => setMenu(null)} />

@@ -26,6 +26,9 @@ export interface Notification {
   sourceId: string
   sourceType: 'message' | 'friendship' | 'dm'
   channelId?: string
+  channelName?: string
+  channelType?: 'text' | 'dm' | string
+  serverId?: string
   content?: string
   read: boolean
   ts: string

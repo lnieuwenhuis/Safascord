@@ -33,7 +33,7 @@ export async function messageRoutes(app: FastifyInstance) {
       if (!channelId) return { messages: [] }
       
       // Verify access
-      const c = await pool.query(`SELECT server_id, type FROM channels WHERE id=$1::uuid`, [channelId])
+      const c = await pool.query(`SELECT server_id, type, name FROM channels WHERE id=$1::uuid`, [channelId])
       if (!c.rowCount) return { messages: [] }
       
       if (c.rows[0].type === 'dm') {
@@ -118,7 +118,7 @@ export async function messageRoutes(app: FastifyInstance) {
          }
       }
       
-      const c = await pool.query(`SELECT server_id, type FROM channels WHERE id=$1::uuid`, [channelId])
+      const c = await pool.query(`SELECT server_id, type, name FROM channels WHERE id=$1::uuid`, [channelId])
       if (!c.rowCount) return { error: "Channel not found" }
       
       if (c.rows[0].type === 'dm') {
@@ -201,7 +201,7 @@ export async function messageRoutes(app: FastifyInstance) {
       // Offload notifications/mentions from the response path.
       void processMessageSideEffects({
         channelId,
-        channelName: channel,
+        channelName: String(c.rows[0].name || channel),
         channelType: c.rows[0].type,
         serverId: c.rows[0].server_id,
         senderId: payload.sub,
@@ -236,7 +236,7 @@ async function processMessageSideEffects(args: {
       )
       await Promise.all(
         members.rows.map((mem) =>
-          createNotification(mem.user_id as string, "message", messageId, "dm", `New message from ${senderName}`, channelId)
+          createNotification(mem.user_id as string, "message", messageId, "dm", `New message from ${senderName}`, channelId, { channelType: "dm" })
         )
       )
       return
@@ -330,7 +330,15 @@ async function processMessageSideEffects(args: {
 
     await Promise.all(
       [...allowedUserIds].map((uid) =>
-        createNotification(uid, "mention", messageId, "message", `You were mentioned by ${senderName} in #${channelName}`, channelId)
+        createNotification(
+          uid,
+          "mention",
+          messageId,
+          "message",
+          `You were mentioned by ${senderName} in #${channelName}`,
+          channelId,
+          { channelName, serverId, channelType },
+        )
       )
     )
   } catch (e) {
@@ -338,7 +346,15 @@ async function processMessageSideEffects(args: {
   }
 }
 
-async function createNotification(userId: string, type: string, sourceId: string, sourceType: string, content: string, channelId?: string) {
+async function createNotification(
+  userId: string,
+  type: string,
+  sourceId: string,
+  sourceType: string,
+  content: string,
+  channelId?: string,
+  channelMeta?: { channelName?: string; serverId?: string; channelType?: string },
+) {
     try {
         // Check quiet mode
         const u = await pool.query(`SELECT notifications_quiet_mode FROM users WHERE id=$1::uuid`, [userId])
@@ -351,6 +367,24 @@ async function createNotification(userId: string, type: string, sourceId: string
             [userId, type, sourceId, sourceType, content, channelId || null]
         )
         const n = r.rows[0]
+
+        let resolvedMeta = channelMeta
+        if (channelId && !resolvedMeta) {
+            const c = await pool.query(
+              `SELECT name, server_id::text AS "serverId", type
+               FROM channels
+               WHERE id = $1::uuid
+               LIMIT 1`,
+              [channelId]
+            )
+            if (c.rowCount) {
+              resolvedMeta = {
+                channelName: c.rows[0]?.name as string | undefined,
+                serverId: c.rows[0]?.serverId as string | undefined,
+                channelType: c.rows[0]?.type as string | undefined,
+              }
+            }
+        }
         
         await redis.publish("messages", JSON.stringify({ 
             channel: `user:${userId}`, 
@@ -363,6 +397,9 @@ async function createNotification(userId: string, type: string, sourceId: string
                     sourceType, 
                     content, 
                     channelId,
+                    channelName: resolvedMeta?.channelName,
+                    serverId: resolvedMeta?.serverId,
+                    channelType: resolvedMeta?.channelType,
                     read: false, 
                     ts: n.created_at,
                     quiet 

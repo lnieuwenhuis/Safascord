@@ -147,13 +147,15 @@ export default function ChannelSidebar({ guildId, activeChannelId }: { guildId?:
                       setEditChannel(c.name) 
                     }}
                   >
-                    <Hash className={`h-4 w-4 ${c.id === activeChannelId ? 'text-cyan-100' : 'text-slate-300/65'}`} />
+                    <div className="relative h-4 w-4 shrink-0">
+                      <Hash className={`h-4 w-4 ${c.id === activeChannelId ? 'text-cyan-100' : 'text-slate-300/65'}`} />
+                      {unread > 0 && (
+                        <div className="absolute -right-1.5 -top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-0.5 text-[9px] font-bold leading-none text-white ring-2 ring-slate-950">
+                          {unread > 9 ? "9+" : unread}
+                        </div>
+                      )}
+                    </div>
                     <span className="text-sm flex-1 truncate">{c.name}</span>
-                    {unread > 0 && (
-                       <div className="badge badge-error badge-xs h-5 min-w-5 rounded-full px-1 text-[10px] font-bold text-white">
-                         {unread > 99 ? "99+" : unread}
-                       </div>
-                    )}
                   </li>
                 )})}
               </ul>
