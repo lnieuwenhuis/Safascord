@@ -1085,7 +1085,7 @@ export default function ChatPanel({ variant, channelName, channelId, guildName, 
                </div>
             )}
             <Input
-              className="border-cyan-300/20 bg-slate-900/70"
+              className="border-cyan-300/20 bg-slate-900/70 text-base md:text-sm"
               placeholder={!effectiveCanSend ? "You do not have permission to send messages in this channel." : (variant === "guild" ? `Message #${channelName}` : `Message ${localDmUser ? (localDmUser.displayName || localDmUser.username) : "Direct Message"}`)}
               disabled={!effectiveCanSend || isUploading}
               value={text}
