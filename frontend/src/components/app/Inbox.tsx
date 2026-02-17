@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react"
+import { useState, useRef, useEffect, useMemo } from "react"
 import { useNotifications } from "../NotificationProvider"
 import { useAuth } from "../../hooks/useAuth"
 import { useNavigate } from "react-router-dom"
@@ -6,6 +6,8 @@ import { Bell, Check, Trash2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import { createPortal } from "react-dom"
+import { api } from "@/lib/api"
+import { useAppCacheStore } from "@/stores/cacheStore"
 
 function formatTimeAgo(date: Date) {
   const seconds = Math.floor((new Date().getTime() - date.getTime()) / 1000)
@@ -24,11 +26,75 @@ function formatTimeAgo(date: Date) {
 
 export default function Inbox() {
   const { notifications, unreadCount, markRead, markAllRead, deleteNotification } = useNotifications()
-  const { user } = useAuth()
+  const { user, token } = useAuth()
   const navigate = useNavigate()
   const [open, setOpen] = useState(false)
   const triggerRef = useRef<HTMLDivElement>(null)
   const [anchorRect, setAnchorRect] = useState<DOMRect | null>(null)
+  const dms = useAppCacheStore((state) => state.dms) || []
+  const setCachedDms = useAppCacheStore((state) => state.setDms)
+  const authToken = token || (typeof window !== "undefined" ? localStorage.getItem("token") || "" : "")
+
+  useEffect(() => {
+    if (!open || !authToken) return
+    const needsDmNames = notifications.some((n) => (n.sourceType === "dm" || n.channelType === "dm") && !!n.channelId)
+    if (!needsDmNames || dms.length > 0) return
+    let cancelled = false
+
+    api.getDMs(authToken).then((res) => {
+      if (cancelled) return
+      if (res.dms) setCachedDms(res.dms)
+    }).catch(() => {})
+
+    return () => {
+      cancelled = true
+    }
+  }, [authToken, dms.length, notifications, open, setCachedDms])
+
+  const dmNameByChannelId = useMemo(() => {
+    const map: Record<string, string> = {}
+    for (const dm of dms) {
+      map[dm.id] = dm.user.displayName || dm.user.username
+    }
+    return map
+  }, [dms])
+
+  const getChannelLabel = (channelId?: string, sourceType?: string, channelType?: string, channelName?: string) => {
+    if (!channelId) return null
+    if (sourceType === "dm" || channelType === "dm") {
+      return dmNameByChannelId[channelId] || channelName || "Direct Message"
+    }
+    return channelName || channelId
+  }
+
+  const getNotificationContent = (n: typeof notifications[number]) => {
+    const base = n.content || "New notification"
+    if (!n.channelId) return base
+
+    const channelLabel = getChannelLabel(n.channelId, n.sourceType, n.channelType, n.channelName)
+    if (!channelLabel) return base
+
+    if (base.includes(n.channelId)) {
+      return base.split(n.channelId).join(channelLabel)
+    }
+
+    if ((n.sourceType === "dm" || n.channelType === "dm") && !base.includes(channelLabel)) {
+      return `${base} in ${channelLabel}`
+    }
+
+    return base
+  }
+
+  const getNotificationTarget = (n: typeof notifications[number]) => {
+    if (!n.channelId) return null
+    if (n.sourceType === "dm" || n.channelType === "dm") {
+      return `/channels/@me/${n.channelId}`
+    }
+    if (n.serverId) {
+      return `/server/${n.serverId}/channel/${n.channelId}`
+    }
+    return null
+  }
 
   useEffect(() => {
     if (!open) return
@@ -106,17 +172,18 @@ export default function Inbox() {
                     <div
                       key={n.id}
                       className={cn("p-4 transition-colors hover:bg-muted/50 cursor-pointer", !n.read && "bg-primary/5")}
-                      onClick={async () => {
-                        if (n.channelId && n.sourceType === "dm") {
-                          navigate(`/channels/@me/${n.channelId}`)
-                        }
+                      onClick={() => {
+                        const target = getNotificationTarget(n)
                         markRead(n.id)
+                        if (target) {
+                          navigate(target)
+                        }
                         setOpen(false)
                       }}
                     >
                       <div className="flex items-start gap-3">
                         <div className="flex-1 min-w-0">
-                          <p className="mb-1 text-sm text-foreground">{n.content}</p>
+                          <p className="mb-1 text-sm text-foreground">{getNotificationContent(n)}</p>
                           <p className="text-xs text-muted-foreground">
                             {formatTimeAgo(new Date(n.ts))}
                           </p>
