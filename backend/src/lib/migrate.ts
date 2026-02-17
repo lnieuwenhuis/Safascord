@@ -271,6 +271,7 @@ export async function runMigrations() {
     await pool.query(`CREATE INDEX IF NOT EXISTS idx_server_member_roles_user_server ON server_member_roles(user_id, server_id);`)
     await pool.query(`CREATE INDEX IF NOT EXISTS idx_server_member_roles_server_user ON server_member_roles(server_id, user_id);`)
     await pool.query(`CREATE INDEX IF NOT EXISTS idx_channel_members_user_channel ON channel_members(user_id, channel_id);`)
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_channels_type_id ON channels(type, id);`)
     await pool.query(`CREATE INDEX IF NOT EXISTS idx_channels_server_name ON channels(server_id, name);`)
     await pool.query(`CREATE INDEX IF NOT EXISTS idx_channels_server_category_name ON channels(server_id, category, name);`)
     await pool.query(`CREATE INDEX IF NOT EXISTS idx_messages_channel_created_at ON messages(channel_id, created_at DESC);`)
@@ -278,6 +279,10 @@ export async function runMigrations() {
     await pool.query(`CREATE INDEX IF NOT EXISTS idx_channel_permissions_channel_send ON channel_permissions(channel_id, can_send_messages);`)
     await pool.query(`CREATE INDEX IF NOT EXISTS idx_channel_permissions_channel_view ON channel_permissions(channel_id, can_view);`)
     await pool.query(`CREATE INDEX IF NOT EXISTS idx_roles_server_position ON roles(server_id, position);`)
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);`)
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_friendships_user1_status_updated ON friendships(user_id_1, status, updated_at DESC);`)
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_friendships_user2_status_updated ON friendships(user_id_2, status, updated_at DESC);`)
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_friendships_action_status ON friendships(action_user_id, status);`)
 
     // Notifications
     await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS notifications_quiet_mode BOOLEAN DEFAULT FALSE;`)

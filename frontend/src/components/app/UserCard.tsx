@@ -523,6 +523,7 @@ export default function UserCard() {
             bannerColor={bannerColor}
             status={status}
             isPremium={isPremium}
+            discriminator={user?.discriminator}
             onEditProfile={handleEditOpen}
             onStatusChange={handleStatusChange}
           />
@@ -663,6 +664,7 @@ export default function UserCard() {
                   bannerColor={tempBannerColor}
                   status={status}
                   isPremium={isPremium}
+                  discriminator={user?.discriminator}
                />
 
                <div className="mt-8 flex gap-3 w-full max-w-[300px]">

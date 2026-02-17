@@ -44,17 +44,16 @@ export default function UserProfilePopover({ userId, serverId, isOpen, onClose, 
           // 2. Fetch Role Info if serverId is present
           if (serverId && userData) {
              try {
-               const membersRes = await api.getServerMembers(token, serverId)
+               const [membersRes, rolesRes] = await Promise.all([
+                 api.getServerMembers(token, serverId),
+                 api.getRoles(token, serverId),
+               ])
                const member = membersRes.members?.find(m => m.id === userId)
-               if (member) {
-                  // We need the full role objects to display colors
-                  const rolesRes = await api.getRoles(token, serverId)
-                  if (rolesRes.roles) {
-                     const userRoles = rolesRes.roles.filter(r => member.roles.includes(r.id))
-                     // Sort by position (assuming roles returned from API might be sorted, or we can rely on filter order if rolesRes is sorted)
-                     // Ideally we should sort them here if they have position data.
-                     setRoles(userRoles)
-                  }
+               if (member && rolesRes.roles) {
+                  const userRoles = rolesRes.roles.filter(r => member.roles.includes(r.id))
+                  // Sort by position (assuming roles returned from API might be sorted, or we can rely on filter order if rolesRes is sorted)
+                  // Ideally we should sort them here if they have position data.
+                  setRoles(userRoles)
                }
              } catch (e) {
                console.error("Failed to fetch roles", e)
@@ -123,10 +122,20 @@ export default function UserProfilePopover({ userId, serverId, isOpen, onClose, 
 
   if (!isOpen || !position) return null
 
-  // Calculate position
-  // UserList is on the right, so popover should be to the left of the item.
+  // Calculate position with side fallback so this can be reused from both user-list and chat clicks.
   const popoverWidth = 300
-  const popoverLeft = position.left - popoverWidth - 10
+  const gap = 10
+  const spaceLeft = position.left
+  const spaceRight = window.innerWidth - position.right
+
+  let popoverLeft = position.left - popoverWidth - gap
+  if (spaceRight >= popoverWidth + gap) {
+    popoverLeft = position.right + gap
+  } else if (spaceLeft >= popoverWidth + gap) {
+    popoverLeft = position.left - popoverWidth - gap
+  } else {
+    popoverLeft = Math.max(10, Math.min(window.innerWidth - popoverWidth - 10, position.left))
+  }
   
   // Adjust top if it goes off screen
   let top = position.top

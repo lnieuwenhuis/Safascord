@@ -57,6 +57,7 @@ export default function UserProfileDialog({ userId, isOpen, onClose }: UserProfi
               bannerColor={user.bannerColor || "#e0ac00"}
               status={user.status as UserStatus || "online"}
               isPremium={false} // Todo: real premium check
+              discriminator={user.discriminator}
             />
         ) : (
              <div className="flex h-[200px] w-[300px] items-center justify-center rounded-xl bg-popover text-popover-foreground shadow-2xl">

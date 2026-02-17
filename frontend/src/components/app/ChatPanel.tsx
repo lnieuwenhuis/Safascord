@@ -6,7 +6,7 @@ import { api, getFullUrl } from "@/lib/api"
 import { useAuth } from "@/hooks/useAuth"
 import { cn } from "@/lib/utils"
 import { useNotifications } from "../NotificationProvider"
-import UserProfileDialog from "./UserProfileDialog"
+import UserProfilePopover from "./UserProfilePopover"
 import type { Message, UserSummary } from "@/types"
 import { useAppCacheStore } from "@/stores/cacheStore"
 
@@ -108,6 +108,7 @@ export default function ChatPanel({ variant, channelName, channelId, guildName, 
   const { markChannelRead } = useNotifications()
   const channelKey = channelId || channelName
   const setCachedChannelMessages = useAppCacheStore((state) => state.setChannelMessages)
+  const cachedDms = useAppCacheStore((state) => state.dms)
   const myRoleColor = useAppCacheStore((state) => (guildId ? state.myRoleColorByServer[guildId] : undefined))
   const setMyRoleColorForServer = useAppCacheStore((state) => state.setMyRoleColorForServer)
   const [msgs, setMsgs] = useState<Message[]>([])
@@ -124,6 +125,7 @@ export default function ChatPanel({ variant, channelName, channelId, guildName, 
   const lastLoadMoreAtRef = useRef(0)
   const oldestTimestampRef = useRef<string | undefined>(undefined)
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null)
+  const [selectedUserRect, setSelectedUserRect] = useState<DOMRect | null>(null)
   const [localDmUser, setLocalDmUser] = useState<{ username: string; displayName: string } | null>(null)
   
   // File upload state
@@ -185,6 +187,11 @@ export default function ChatPanel({ variant, channelName, channelId, guildName, 
   useEffect(() => {
     setTyping(new Set())
     if (variant === "dm" && channelName && token) {
+      const cachedDm = (cachedDms || []).find((dm) => dm.id === channelName)
+      if (cachedDm) {
+        setLocalDmUser(cachedDm.user)
+        return
+      }
       // Try to find the DM user name
       api.getDMs(token).then(res => {
         const dm = res.dms.find(d => d.id === channelName)
@@ -195,7 +202,7 @@ export default function ChatPanel({ variant, channelName, channelId, guildName, 
     } else {
       setLocalDmUser(null)
     }
-  }, [variant, channelName, token])
+  }, [variant, channelName, token, cachedDms])
 
   const [showMentionMenu, setShowMentionMenu] = useState(false)
   const [mentionQuery, setMentionQuery] = useState("")
@@ -566,7 +573,7 @@ export default function ChatPanel({ variant, channelName, channelId, guildName, 
             const shouldAutoScroll = isNearBottom()
             setMsgs((prevMsgs) => {
               if (prevMsgs.some((x) => x.id === d.message!.id)) return prevMsgs
-              return [...prevMsgs, {
+              const incomingMessage: Message = {
                 id: d.message!.id,
                 user: d.user || "User",
                 userAvatar: d.userAvatar,
@@ -575,7 +582,24 @@ export default function ChatPanel({ variant, channelName, channelId, guildName, 
                 attachmentUrl: d.message!.attachmentUrl,
                 ts: d.message!.ts || new Date().toISOString(),
                 roleColor: d.roleColor || (variant === "guild" && d.userId === user?.id ? myRoleColor : undefined),
-              }]
+              }
+
+              // Reconcile optimistic local messages immediately to avoid a temporary duplicate.
+              if (d.userId && user?.id && d.userId === user.id) {
+                for (let i = prevMsgs.length - 1; i >= 0; i -= 1) {
+                  const candidate = prevMsgs[i]
+                  if (!candidate.id.startsWith("local:")) continue
+                  if (candidate.userId !== user.id) continue
+                  if (candidate.text !== incomingMessage.text) continue
+                  if ((candidate.attachmentUrl || "") !== (incomingMessage.attachmentUrl || "")) continue
+
+                  const next = [...prevMsgs]
+                  next[i] = incomingMessage
+                  return next
+                }
+              }
+
+              return [...prevMsgs, incomingMessage]
             })
             if (shouldAutoScroll) {
               requestAnimationFrame(() => {
@@ -900,7 +924,11 @@ export default function ChatPanel({ variant, channelName, channelId, guildName, 
                 <div key={first.id} className="group mt-[17px] flex items-start gap-3 -mx-4 px-4 py-0.5 hover:bg-cyan-400/5">
                   <div 
                     className="h-8 w-8 rounded-full bg-primary/20 mt-0.5 overflow-hidden shrink-0 cursor-pointer hover:opacity-80"
-                    onClick={() => g.userId && setSelectedUserId(g.userId)}
+                    onClick={(e) => {
+                      if (!g.userId) return
+                      setSelectedUserId(g.userId)
+                      setSelectedUserRect(e.currentTarget.getBoundingClientRect())
+                    }}
                   >
                     {avatarUrl ? (
                       <img src={avatarUrl} alt={g.user} className="h-full w-full object-cover block" />
@@ -924,11 +952,15 @@ export default function ChatPanel({ variant, channelName, channelId, guildName, 
                         <div key={it.id} className={cn("relative group/msg -mx-4 px-4 py-0.5 hover:bg-cyan-400/5", idx > 0 && !isConsecutiveMention && "mt-0.5", isMentioned && "bg-blue-500/10 border-l-2 border-blue-500 hover:bg-blue-500/15 ml-[-3.75rem] pl-[3.75rem]")}>
                           {idx === 0 && (
                              <div className="flex items-baseline gap-2 mb-1">
-                               <div 
-                                 className="text-sm font-medium text-foreground hover:underline cursor-pointer"
-                                 onClick={() => g.userId && setSelectedUserId(g.userId)}
-                                 style={{ color: g.roleColor || undefined }}
-                               >
+                              <div 
+                                className="text-sm font-medium text-foreground hover:underline cursor-pointer"
+                                onClick={(e) => {
+                                  if (!g.userId) return
+                                  setSelectedUserId(g.userId)
+                                  setSelectedUserRect(e.currentTarget.getBoundingClientRect())
+                                }}
+                                style={{ color: g.roleColor || undefined }}
+                              >
                                  {isMe && user.displayName ? user.displayName : g.user}
                                </div>
                                {first.ts && <div className="text-xs text-slate-300/60">{fmt(first.ts)}</div>}
@@ -1053,7 +1085,7 @@ export default function ChatPanel({ variant, channelName, channelId, guildName, 
                </div>
             )}
             <Input
-              className="border-cyan-300/20 bg-slate-900/70"
+              className="border-cyan-300/20 bg-slate-900/70 text-base md:text-sm"
               placeholder={!effectiveCanSend ? "You do not have permission to send messages in this channel." : (variant === "guild" ? `Message #${channelName}` : `Message ${localDmUser ? (localDmUser.displayName || localDmUser.username) : "Direct Message"}`)}
               disabled={!effectiveCanSend || isUploading}
               value={text}
@@ -1089,10 +1121,15 @@ export default function ChatPanel({ variant, channelName, channelId, guildName, 
         )}
       </div>
 
-      <UserProfileDialog 
+      <UserProfilePopover
         userId={selectedUserId} 
-        isOpen={!!selectedUserId} 
-        onClose={() => setSelectedUserId(null)} 
+        serverId={guildId}
+        isOpen={!!selectedUserId && !!selectedUserRect}
+        onClose={() => {
+          setSelectedUserId(null)
+          setSelectedUserRect(null)
+        }}
+        position={selectedUserRect}
       />
     </div>
   )

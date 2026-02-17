@@ -4,6 +4,31 @@ import { pool } from "../lib/db.js"
 import { redis } from "../lib/redis.js"
 import { JWT_SECRET } from "../lib/auth.js"
 
+const CHANNEL_UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+async function resolveChannelId(channel: string | undefined, serverId?: string): Promise<string | null> {
+  if (!channel) return null
+  if (CHANNEL_UUID_RE.test(channel)) return channel
+
+  const r = serverId
+    ? await pool.query(
+        `SELECT id::text AS id
+         FROM channels
+         WHERE name=$1::text
+           AND server_id=$2::uuid
+         LIMIT 1`,
+        [channel, serverId],
+      )
+    : await pool.query(
+        `SELECT id::text AS id
+         FROM channels
+         WHERE name=$1::text
+         LIMIT 1`,
+        [channel],
+      )
+  return (r.rows[0]?.id as string | undefined) || null
+}
+
 export async function messageRoutes(app: FastifyInstance) {
   app.get("/api/messages", async (req: FastifyRequest<{ Querystring: { channel?: string; limit?: string; before?: string; serverId?: string } }>) => {
     const auth = (req.headers as any).authorization as string | undefined
@@ -14,49 +39,44 @@ export async function messageRoutes(app: FastifyInstance) {
       const serverId = req.query.serverId
       const limit = Math.min(Math.max(parseInt(req.query.limit || "50"), 1), 200)
       const before = req.query.before || null
-      
-      // Check if channel param is UUID
-      const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(channel || "")
-      
-      let channelId = channel
-      if (!isUUID && channel) {
-         // Lookup by name (legacy support for server channels by name)
-         if (serverId) {
-            const c = await pool.query(`SELECT id FROM channels WHERE name=$1::text AND server_id=$2::uuid LIMIT 1`, [channel, serverId])
-            channelId = c.rows[0]?.id
-         } else {
-            const c = await pool.query(`SELECT id FROM channels WHERE name=$1::text LIMIT 1`, [channel])
-            channelId = c.rows[0]?.id
-         }
-      }
-      
+
+      const channelId = await resolveChannelId(channel, serverId || undefined)
       if (!channelId) return { messages: [] }
-      
+
       // Verify access
-      const c = await pool.query(`SELECT server_id, type FROM channels WHERE id=$1::uuid`, [channelId])
+      const c = await pool.query(`SELECT server_id, type, name FROM channels WHERE id=$1::uuid`, [channelId])
       if (!c.rowCount) return { messages: [] }
-      
-      if (c.rows[0].type === 'dm') {
+
+      const channelRow = c.rows[0] as { server_id: string | null; type: string; name: string | null }
+
+      if (channelRow.type === 'dm') {
           const m = await pool.query(`SELECT 1 FROM channel_members WHERE channel_id=$1::uuid AND user_id=$2::uuid`, [channelId, payload.sub])
           if (!m.rowCount) return { error: "Unauthorized" }
-      } else {
-          // Check view permissions
-          const hasPerms = await pool.query(`SELECT 1 FROM channel_permissions WHERE channel_id=$1::uuid LIMIT 1`, [channelId])
-          if (hasPerms.rowCount && hasPerms.rowCount > 0) {
-             const perms = await pool.query(
-               `SELECT cp.can_view
-                FROM channel_permissions cp
-                JOIN server_member_roles smr ON smr.role_id = cp.role_id
-                WHERE cp.channel_id = $1::uuid 
-                  AND smr.user_id = $2::uuid
-                  AND smr.server_id = $3::uuid`,
-               [channelId, payload.sub, c.rows[0].server_id]
-             )
-             const canView = perms.rows.some(r => r.can_view)
-             const serv = await pool.query(`SELECT owner_id FROM servers WHERE id=$1::uuid`, [c.rows[0].server_id])
-             const isOwner = serv.rows[0]?.owner_id === payload.sub
-             
-             if (!canView && !isOwner) return { error: "Unauthorized" }
+      } else if (channelRow.server_id) {
+          const perms = await pool.query(
+            `SELECT EXISTS(
+                      SELECT 1
+                      FROM channel_permissions cp_exists
+                      WHERE cp_exists.channel_id = $1::uuid
+                    ) AS has_permissions,
+                    COALESCE(bool_or(cp.can_view), FALSE) AS can_view,
+                    EXISTS(
+                      SELECT 1
+                      FROM servers s
+                      WHERE s.id = $3::uuid
+                        AND s.owner_id = $2::uuid
+                    ) AS is_owner
+             FROM server_member_roles smr
+             LEFT JOIN channel_permissions cp
+               ON cp.channel_id = $1::uuid
+              AND cp.role_id = smr.role_id
+             WHERE smr.user_id = $2::uuid
+               AND smr.server_id = $3::uuid`,
+            [channelId, payload.sub, channelRow.server_id],
+          )
+          const guard = perms.rows[0] as { has_permissions: boolean; can_view: boolean; is_owner: boolean }
+          if (guard.has_permissions && !guard.can_view && !guard.is_owner) {
+            return { error: "Unauthorized" }
           }
       }
 
@@ -102,82 +122,90 @@ export async function messageRoutes(app: FastifyInstance) {
     if (content && content.length > 5000) return { error: "Message too long (max 5000 characters)" }
     try {
       const payload = jwt.verify(auth.replace(/^Bearer\s+/i, ""), JWT_SECRET) as any
-      
-      let channelId = channel
-      const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(channel)
-      
-      if (!isUUID) {
-         if (serverId) {
-            const c = await pool.query(`SELECT id FROM channels WHERE name=$1::text AND server_id=$2::uuid LIMIT 1`, [channel, serverId])
-            if (!c.rowCount) return { error: "Channel not found" }
-            channelId = c.rows[0].id
-         } else {
-            const c = await pool.query(`SELECT id FROM channels WHERE name=$1::text LIMIT 1`, [channel])
-            if (!c.rowCount) return { error: "Channel not found" }
-            channelId = c.rows[0].id
-         }
-      }
-      
-      const c = await pool.query(`SELECT server_id, type FROM channels WHERE id=$1::uuid`, [channelId])
+
+      const channelId = await resolveChannelId(channel, serverId || undefined)
+      if (!channelId) return { error: "Channel not found" }
+
+      const c = await pool.query(`SELECT server_id, type, name FROM channels WHERE id=$1::uuid`, [channelId])
       if (!c.rowCount) return { error: "Channel not found" }
-      
-      if (c.rows[0].type === 'dm') {
+
+      const channelRow = c.rows[0] as { server_id: string | null; type: string; name: string | null }
+
+      if (channelRow.type === 'dm') {
          const m = await pool.query(`SELECT 1 FROM channel_members WHERE channel_id=$1::uuid AND user_id=$2::uuid`, [channelId, payload.sub])
          if (!m.rowCount) return { error: "Not a member of this DM" }
-      } else {
-         const s = await pool.query(`SELECT muted FROM server_members WHERE server_id=$1::uuid AND user_id=$2::uuid`, [c.rows[0].server_id, payload.sub])
-         if (!s.rowCount) return { error: "Not a member of this server" }
-         if (s.rows[0].muted) return { error: "You are muted" }
-         
-         // Check channel permissions
-         const perms = await pool.query(
-           `SELECT cp.can_send_messages 
-            FROM channel_permissions cp
-            JOIN server_member_roles smr ON smr.role_id = cp.role_id
-            WHERE cp.channel_id = $1::uuid 
-              AND smr.user_id = $2::uuid
-              AND smr.server_id = $3::uuid`,
-           [channelId, payload.sub, c.rows[0].server_id]
+      } else if (channelRow.server_id) {
+         const access = await pool.query(
+           `SELECT sm.muted AS muted,
+                   EXISTS(
+                     SELECT 1
+                     FROM channel_permissions cp_exists
+                     WHERE cp_exists.channel_id = $1::uuid
+                   ) AS has_permissions,
+                   COALESCE(bool_or(cp.can_send_messages), FALSE) AS can_send,
+                   COALESCE(bool_or((r.can_manage_server = TRUE) OR (r.can_manage_channels = TRUE)), FALSE) AS is_admin,
+                   EXISTS(
+                     SELECT 1
+                     FROM servers s
+                     WHERE s.id = $3::uuid
+                       AND s.owner_id = $2::uuid
+                   ) AS is_owner
+            FROM server_members sm
+            LEFT JOIN server_member_roles smr
+              ON smr.server_id = sm.server_id
+             AND smr.user_id = sm.user_id
+            LEFT JOIN roles r
+              ON r.id = smr.role_id
+            LEFT JOIN channel_permissions cp
+              ON cp.channel_id = $1::uuid
+             AND cp.role_id = smr.role_id
+            WHERE sm.server_id = $3::uuid
+              AND sm.user_id = $2::uuid
+            GROUP BY sm.muted`,
+           [channelId, payload.sub, channelRow.server_id]
          )
-         
-         // If permissions exist, user must have at least one allowed role
-         const hasPerms = await pool.query(`SELECT 1 FROM channel_permissions WHERE channel_id=$1::uuid LIMIT 1`, [channelId])
-         if (hasPerms.rowCount && hasPerms.rowCount > 0) {
-            // User can send if ANY of their roles allow it (Logical OR)
-            const canSend = perms.rows.some(r => r.can_send_messages)
-            
-            const [serv, admin] = await Promise.all([
-              pool.query(`SELECT owner_id FROM servers WHERE id=$1::uuid`, [c.rows[0].server_id]),
-              pool.query(
-                 `SELECT 1 FROM server_member_roles smr
-                  JOIN roles r ON r.id = smr.role_id
-                  WHERE smr.user_id = $1::uuid AND smr.server_id = $2::uuid
-                    AND (r.can_manage_server = TRUE OR r.can_manage_channels = TRUE)
-                  LIMIT 1`,
-                 [payload.sub, c.rows[0].server_id]
-              ),
-            ])
-            const isAdmin = admin.rowCount && admin.rowCount > 0
-            const isOwner = serv.rows[0]?.owner_id === payload.sub
-            
-            if (!canSend && !isOwner && !isAdmin) return { error: "Missing permissions" }
+         if (!access.rowCount) return { error: "Not a member of this server" }
+
+         const guard = access.rows[0] as {
+           muted: boolean
+           has_permissions: boolean
+           can_send: boolean
+           is_admin: boolean
+           is_owner: boolean
+         }
+
+         if (guard.muted) return { error: "You are muted" }
+         if (guard.has_permissions && !guard.can_send && !guard.is_owner && !guard.is_admin) {
+           return { error: "Missing permissions" }
          }
       }
 
       const r = await pool.query(
-        `INSERT INTO messages (channel_id, user_id, content, attachment_url)
-         VALUES ($1::uuid, $2::uuid, $3::text, $4::text)
-         RETURNING id::text AS id, content AS text, attachment_url, created_at AS ts`,
+        `WITH inserted AS (
+           INSERT INTO messages (channel_id, user_id, content, attachment_url)
+           VALUES ($1::uuid, $2::uuid, $3::text, $4::text)
+           RETURNING id::text AS id, content AS text, attachment_url, created_at AS ts, user_id
+         )
+         SELECT inserted.id,
+                inserted.text,
+                inserted.attachment_url,
+                inserted.ts,
+                COALESCE(u.display_name, u.username) AS sender_name,
+                u.avatar_url AS sender_avatar
+         FROM inserted
+         LEFT JOIN users u ON u.id = inserted.user_id`,
         [channelId, payload.sub, content || "", attachmentUrl || null]
       )
-      const m = r.rows[0] as { id: string; text: string; attachment_url: string | null; ts: string }
-      
-      const ur = await pool.query(
-        `SELECT COALESCE(display_name, username) AS name, avatar_url FROM users WHERE id=$1::uuid LIMIT 1`,
-        [payload.sub]
-      )
-      const sender = (ur.rows[0]?.name as string) || "User"
-      const avatar = ur.rows[0]?.avatar_url as string | null
+      const m = r.rows[0] as {
+        id: string
+        text: string
+        attachment_url: string | null
+        ts: string
+        sender_name: string | null
+        sender_avatar: string | null
+      }
+      const sender = m.sender_name || "User"
+      const avatar = m.sender_avatar
       
       const msgData = { 
         id: m.id, 
@@ -201,9 +229,9 @@ export async function messageRoutes(app: FastifyInstance) {
       // Offload notifications/mentions from the response path.
       void processMessageSideEffects({
         channelId,
-        channelName: channel,
-        channelType: c.rows[0].type,
-        serverId: c.rows[0].server_id,
+        channelName: String(channelRow.name || channel),
+        channelType: channelRow.type,
+        serverId: channelRow.server_id || undefined,
         senderId: payload.sub,
         senderName: sender,
         messageId: m.id,
@@ -236,7 +264,7 @@ async function processMessageSideEffects(args: {
       )
       await Promise.all(
         members.rows.map((mem) =>
-          createNotification(mem.user_id as string, "message", messageId, "dm", `New message from ${senderName}`, channelId)
+          createNotification(mem.user_id as string, "message", messageId, "dm", `New message from ${senderName}`, channelId, { channelType: "dm" })
         )
       )
       return
@@ -330,7 +358,15 @@ async function processMessageSideEffects(args: {
 
     await Promise.all(
       [...allowedUserIds].map((uid) =>
-        createNotification(uid, "mention", messageId, "message", `You were mentioned by ${senderName} in #${channelName}`, channelId)
+        createNotification(
+          uid,
+          "mention",
+          messageId,
+          "message",
+          `You were mentioned by ${senderName} in #${channelName}`,
+          channelId,
+          { channelName, serverId, channelType },
+        )
       )
     )
   } catch (e) {
@@ -338,19 +374,52 @@ async function processMessageSideEffects(args: {
   }
 }
 
-async function createNotification(userId: string, type: string, sourceId: string, sourceType: string, content: string, channelId?: string) {
+async function createNotification(
+  userId: string,
+  type: string,
+  sourceId: string,
+  sourceType: string,
+  content: string,
+  channelId?: string,
+  channelMeta?: { channelName?: string; serverId?: string; channelType?: string },
+) {
     try {
-        // Check quiet mode
-        const u = await pool.query(`SELECT notifications_quiet_mode FROM users WHERE id=$1::uuid`, [userId])
-        const quiet = u.rows[0]?.notifications_quiet_mode || false
-        
         const r = await pool.query(
-            `INSERT INTO notifications (user_id, type, source_id, source_type, content, channel_id)
-             VALUES ($1::uuid, $2, $3::uuid, $4, $5, $6::uuid)
-             RETURNING id, created_at`,
+            `WITH user_settings AS (
+               SELECT COALESCE(notifications_quiet_mode, FALSE) AS quiet
+               FROM users
+               WHERE id = $1::uuid
+             ),
+             inserted AS (
+               INSERT INTO notifications (user_id, type, source_id, source_type, content, channel_id)
+               VALUES ($1::uuid, $2, $3::uuid, $4, $5, $6::uuid)
+               RETURNING id, created_at
+             )
+             SELECT inserted.id, inserted.created_at, COALESCE(user_settings.quiet, FALSE) AS quiet
+             FROM inserted
+             LEFT JOIN user_settings ON TRUE`,
             [userId, type, sourceId, sourceType, content, channelId || null]
         )
-        const n = r.rows[0]
+        const n = r.rows[0] as { id: string; created_at: string; quiet: boolean }
+        const quiet = !!n.quiet
+
+        let resolvedMeta = channelMeta
+        if (channelId && !resolvedMeta) {
+            const c = await pool.query(
+              `SELECT name, server_id::text AS "serverId", type
+               FROM channels
+               WHERE id = $1::uuid
+               LIMIT 1`,
+              [channelId]
+            )
+            if (c.rowCount) {
+              resolvedMeta = {
+                channelName: c.rows[0]?.name as string | undefined,
+                serverId: c.rows[0]?.serverId as string | undefined,
+                channelType: c.rows[0]?.type as string | undefined,
+              }
+            }
+        }
         
         await redis.publish("messages", JSON.stringify({ 
             channel: `user:${userId}`, 
@@ -363,6 +432,9 @@ async function createNotification(userId: string, type: string, sourceId: string
                     sourceType, 
                     content, 
                     channelId,
+                    channelName: resolvedMeta?.channelName,
+                    serverId: resolvedMeta?.serverId,
+                    channelType: resolvedMeta?.channelType,
                     read: false, 
                     ts: n.created_at,
                     quiet 

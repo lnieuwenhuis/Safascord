@@ -4,7 +4,6 @@ import type {
   ServersResponse, 
   ChannelsResponse, 
   MessagesResponse, 
-  SocketInfoResponse, 
   MessageResponse, 
   ServerResponse, 
   BasicResponse, 
@@ -30,22 +29,6 @@ const configuredWsBase = (import.meta.env.VITE_WS_BASE as string | undefined)?.r
 
 export const API_BASE = configuredApiBase || (import.meta.env.DEV ? "http://localhost:4000/api" : "/api")
 export const WS_BASE = configuredWsBase || (import.meta.env.DEV ? "ws://localhost:4001/ws" : `${window.location.protocol === "https:" ? "wss://" : "ws://"}${window.location.host}/ws`)
-
-function resolveSocketWsUrl(candidate?: string): string {
-  if (!candidate) return WS_BASE
-  try {
-    const parsed = new URL(candidate)
-    const isWsProtocol = parsed.protocol === "ws:" || parsed.protocol === "wss:"
-    if (!isWsProtocol) return WS_BASE
-
-    const isLocalhostTarget = parsed.hostname === "localhost" || parsed.hostname === "127.0.0.1"
-    if (!import.meta.env.DEV && isLocalhostTarget) return WS_BASE
-
-    return candidate
-  } catch {
-    return WS_BASE
-  }
-}
 
 export function getFullUrl(url: string | null | undefined): string | null {
   if (!url) return null
@@ -86,7 +69,15 @@ const getResponseCache = new Map<string, { expiresAt: number; value: unknown }>(
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 function getCacheTtlMs(path: string): number {
-  if (path === "/servers") return 3000
+  if (path === "/servers") return 10000
+  if (path === "/channels") return 3000
+  if (path.startsWith("/channels?serverId=")) return 5000
+  if (path.startsWith("/servers/") && path.endsWith("/roles")) return 5000
+  if (path.startsWith("/servers/") && path.includes("/members")) return 3000
+  if (path.startsWith("/users/") && path.endsWith("/profile")) return 3000
+  if (path === "/friends" || path === "/friends/requests") return 4000
+  if (path === "/dms") return 5000
+  if (path === "/notifications") return 1500
   return 0
 }
 
@@ -260,13 +251,9 @@ export const api = {
     if (guildId) url += `&serverId=${encodeURIComponent(guildId)}`
     return get<MessagesResponse>(url, { headers: { Authorization: `Bearer ${token}` } })
   },
-  socketInfo: async (channel: string) => {
-    try {
-      const info = await get<SocketInfoResponse>(`/socket-info?channel=${encodeURIComponent(channel)}`)
-      return { exists: !!info.exists, wsUrl: resolveSocketWsUrl(info.wsUrl) }
-    } catch {
-      return { exists: false, wsUrl: WS_BASE }
-    }
+  socketInfo: async (channel?: string) => {
+    void channel
+    return { exists: true, wsUrl: WS_BASE }
   },
   sendMessage: async (token: string, channel: string, content: string, guildId?: string, attachmentUrl?: string) => {
     return request<MessageResponse>("/messages", {
