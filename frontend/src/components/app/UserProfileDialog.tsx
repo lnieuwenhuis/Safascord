@@ -51,7 +51,6 @@ export default function UserProfileDialog({ userId, isOpen, onClose }: UserProfi
             <ProfileCard
               displayName={user.displayName || user.username}
               username={user.username}
-              userId={user.id}
               bio={user.bio || ""}
               avatarUrl={getFullUrl(user.avatarUrl)}
               bannerUrl={getFullUrl(user.bannerUrl)}

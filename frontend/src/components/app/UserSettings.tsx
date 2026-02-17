@@ -55,10 +55,6 @@ export default function UserSettings({ open, onClose }: { open: boolean; onClose
               <div className="space-y-4">
                 <div className="rounded-lg border border-border bg-card p-4 text-card-foreground">
                   <div className="text-sm">Unique Identifier</div>
-                  <Input value={user?.id || ""} readOnly className="mt-2 font-mono" />
-                </div>
-                <div className="rounded-lg border border-border bg-card p-4 text-card-foreground">
-                  <div className="text-sm">Username Tag</div>
                   <Input value={user ? `${user.username}${user.discriminator ? `#${user.discriminator}` : ""}` : ""} readOnly className="mt-2" />
                 </div>
                 <div className="rounded-lg border border-border bg-card p-4 text-card-foreground">
