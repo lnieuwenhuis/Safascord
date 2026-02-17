@@ -44,17 +44,16 @@ export default function UserProfilePopover({ userId, serverId, isOpen, onClose, 
           // 2. Fetch Role Info if serverId is present
           if (serverId && userData) {
              try {
-               const membersRes = await api.getServerMembers(token, serverId)
+               const [membersRes, rolesRes] = await Promise.all([
+                 api.getServerMembers(token, serverId),
+                 api.getRoles(token, serverId),
+               ])
                const member = membersRes.members?.find(m => m.id === userId)
-               if (member) {
-                  // We need the full role objects to display colors
-                  const rolesRes = await api.getRoles(token, serverId)
-                  if (rolesRes.roles) {
-                     const userRoles = rolesRes.roles.filter(r => member.roles.includes(r.id))
-                     // Sort by position (assuming roles returned from API might be sorted, or we can rely on filter order if rolesRes is sorted)
-                     // Ideally we should sort them here if they have position data.
-                     setRoles(userRoles)
-                  }
+               if (member && rolesRes.roles) {
+                  const userRoles = rolesRes.roles.filter(r => member.roles.includes(r.id))
+                  // Sort by position (assuming roles returned from API might be sorted, or we can rely on filter order if rolesRes is sorted)
+                  // Ideally we should sort them here if they have position data.
+                  setRoles(userRoles)
                }
              } catch (e) {
                console.error("Failed to fetch roles", e)

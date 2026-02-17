@@ -6,10 +6,12 @@ import os from "os"
 export async function statsRoutes(app: FastifyInstance) {
   app.get("/api/stats/summary", async () => {
     try {
-      const userCount = await pool.query("SELECT count(*) FROM users")
-      const serverCount = await pool.query("SELECT count(*) FROM servers")
-      const messageCount = await pool.query("SELECT count(*) FROM messages")
-      const channelCount = await pool.query("SELECT count(*) FROM channels")
+      const [userCount, serverCount, messageCount, channelCount] = await Promise.all([
+        pool.query("SELECT count(*) FROM users"),
+        pool.query("SELECT count(*) FROM servers"),
+        pool.query("SELECT count(*) FROM messages"),
+        pool.query("SELECT count(*) FROM channels"),
+      ])
       
       return {
         users: parseInt(userCount.rows[0].count),

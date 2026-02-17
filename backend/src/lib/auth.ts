@@ -30,20 +30,24 @@ export async function findUserByUsernameOrEmail(identifier: string) {
 
 export async function checkPermission(userId: string, serverId: string, perm: string) {
   if (!userId || !serverId) return false
-  const server = await pool.query(`SELECT owner_id FROM servers WHERE id=$1::uuid`, [serverId])
-  if (server.rows[0]?.owner_id === userId) return true
-
   const r = await pool.query(
-    `SELECT bool_or(roles.can_manage_channels) as can_manage_channels,
-            bool_or(roles.can_manage_server) as can_manage_server,
-            bool_or(roles.can_manage_roles) as can_manage_roles
-     FROM server_member_roles
-     JOIN roles ON roles.id = server_member_roles.role_id 
-     WHERE server_member_roles.user_id=$1::uuid AND server_member_roles.server_id=$2::uuid`,
+    `SELECT (s.owner_id = $1::uuid) AS is_owner,
+            COALESCE(bool_or(r.can_manage_channels), FALSE) AS can_manage_channels,
+            COALESCE(bool_or(r.can_manage_server), FALSE) AS can_manage_server,
+            COALESCE(bool_or(r.can_manage_roles), FALSE) AS can_manage_roles
+     FROM servers s
+     LEFT JOIN server_member_roles smr
+       ON smr.server_id = s.id
+      AND smr.user_id = $1::uuid
+     LEFT JOIN roles r
+       ON r.id = smr.role_id
+     WHERE s.id = $2::uuid
+     GROUP BY s.owner_id`,
     [userId, serverId]
   )
   const p = r.rows[0]
   if (!p) return false
+  if (p.is_owner) return true
   if (perm === 'can_manage_channels') return !!p.can_manage_channels
   if (perm === 'can_manage_server') return !!p.can_manage_server
   if (perm === 'can_manage_roles') return !!p.can_manage_roles

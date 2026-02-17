@@ -12,7 +12,7 @@ export default function DMListSidebar() {
   const setCachedDms = useAppCacheStore((state) => state.setDms)
 
   useEffect(() => {
-    if (!token) return
+    if (!token || dms.length > 0) return
     let cancelled = false
     api.getDMs(token).then(res => {
       if (cancelled) return
@@ -23,7 +23,7 @@ export default function DMListSidebar() {
     return () => {
       cancelled = true
     }
-  }, [token, setCachedDms])
+  }, [token, dms.length, setCachedDms])
 
   return (
     <aside className="flex h-dvh w-full flex-col bg-slate-950/86 text-slate-100 backdrop-blur-xl">

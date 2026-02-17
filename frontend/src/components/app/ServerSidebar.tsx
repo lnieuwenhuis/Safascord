@@ -39,7 +39,7 @@ export default function ServerSidebar() {
 
   useEffect(() => {
     let cancelled = false
-    if (!authToken) return () => { cancelled = true }
+    if (!authToken || servers.length > 0) return () => { cancelled = true }
 
     api.servers(authToken).then((r) => {
       if (cancelled) return
@@ -49,7 +49,7 @@ export default function ServerSidebar() {
     return () => {
       cancelled = true
     }
-  }, [authToken, setCachedServers])
+  }, [authToken, servers.length, setCachedServers])
 
   const openMenu = (id: string, x: number, y: number) => {
     const menuWidth = 176
