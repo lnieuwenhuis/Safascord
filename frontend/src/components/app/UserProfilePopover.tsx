@@ -123,10 +123,20 @@ export default function UserProfilePopover({ userId, serverId, isOpen, onClose, 
 
   if (!isOpen || !position) return null
 
-  // Calculate position
-  // UserList is on the right, so popover should be to the left of the item.
+  // Calculate position with side fallback so this can be reused from both user-list and chat clicks.
   const popoverWidth = 300
-  const popoverLeft = position.left - popoverWidth - 10
+  const gap = 10
+  const spaceLeft = position.left
+  const spaceRight = window.innerWidth - position.right
+
+  let popoverLeft = position.left - popoverWidth - gap
+  if (spaceRight >= popoverWidth + gap) {
+    popoverLeft = position.right + gap
+  } else if (spaceLeft >= popoverWidth + gap) {
+    popoverLeft = position.left - popoverWidth - gap
+  } else {
+    popoverLeft = Math.max(10, Math.min(window.innerWidth - popoverWidth - 10, position.left))
+  }
   
   // Adjust top if it goes off screen
   let top = position.top
@@ -154,6 +164,7 @@ export default function UserProfilePopover({ userId, serverId, isOpen, onClose, 
           <ProfileCard
             displayName={user.displayName || user.username}
             username={user.username}
+            userId={user.id}
             bio={user.bio || ""}
             avatarUrl={getFullUrl(user.avatarUrl)}
             bannerUrl={getFullUrl(user.bannerUrl)}

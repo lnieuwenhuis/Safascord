@@ -6,7 +6,7 @@ import { api, getFullUrl } from "@/lib/api"
 import { useAuth } from "@/hooks/useAuth"
 import { cn } from "@/lib/utils"
 import { useNotifications } from "../NotificationProvider"
-import UserProfileDialog from "./UserProfileDialog"
+import UserProfilePopover from "./UserProfilePopover"
 import type { Message, UserSummary } from "@/types"
 import { useAppCacheStore } from "@/stores/cacheStore"
 
@@ -124,6 +124,7 @@ export default function ChatPanel({ variant, channelName, channelId, guildName, 
   const lastLoadMoreAtRef = useRef(0)
   const oldestTimestampRef = useRef<string | undefined>(undefined)
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null)
+  const [selectedUserRect, setSelectedUserRect] = useState<DOMRect | null>(null)
   const [localDmUser, setLocalDmUser] = useState<{ username: string; displayName: string } | null>(null)
   
   // File upload state
@@ -917,7 +918,11 @@ export default function ChatPanel({ variant, channelName, channelId, guildName, 
                 <div key={first.id} className="group mt-[17px] flex items-start gap-3 -mx-4 px-4 py-0.5 hover:bg-cyan-400/5">
                   <div 
                     className="h-8 w-8 rounded-full bg-primary/20 mt-0.5 overflow-hidden shrink-0 cursor-pointer hover:opacity-80"
-                    onClick={() => g.userId && setSelectedUserId(g.userId)}
+                    onClick={(e) => {
+                      if (!g.userId) return
+                      setSelectedUserId(g.userId)
+                      setSelectedUserRect(e.currentTarget.getBoundingClientRect())
+                    }}
                   >
                     {avatarUrl ? (
                       <img src={avatarUrl} alt={g.user} className="h-full w-full object-cover block" />
@@ -941,11 +946,15 @@ export default function ChatPanel({ variant, channelName, channelId, guildName, 
                         <div key={it.id} className={cn("relative group/msg -mx-4 px-4 py-0.5 hover:bg-cyan-400/5", idx > 0 && !isConsecutiveMention && "mt-0.5", isMentioned && "bg-blue-500/10 border-l-2 border-blue-500 hover:bg-blue-500/15 ml-[-3.75rem] pl-[3.75rem]")}>
                           {idx === 0 && (
                              <div className="flex items-baseline gap-2 mb-1">
-                               <div 
-                                 className="text-sm font-medium text-foreground hover:underline cursor-pointer"
-                                 onClick={() => g.userId && setSelectedUserId(g.userId)}
-                                 style={{ color: g.roleColor || undefined }}
-                               >
+                              <div 
+                                className="text-sm font-medium text-foreground hover:underline cursor-pointer"
+                                onClick={(e) => {
+                                  if (!g.userId) return
+                                  setSelectedUserId(g.userId)
+                                  setSelectedUserRect(e.currentTarget.getBoundingClientRect())
+                                }}
+                                style={{ color: g.roleColor || undefined }}
+                              >
                                  {isMe && user.displayName ? user.displayName : g.user}
                                </div>
                                {first.ts && <div className="text-xs text-slate-300/60">{fmt(first.ts)}</div>}
@@ -1106,10 +1115,15 @@ export default function ChatPanel({ variant, channelName, channelId, guildName, 
         )}
       </div>
 
-      <UserProfileDialog 
+      <UserProfilePopover
         userId={selectedUserId} 
-        isOpen={!!selectedUserId} 
-        onClose={() => setSelectedUserId(null)} 
+        serverId={guildId}
+        isOpen={!!selectedUserId && !!selectedUserRect}
+        onClose={() => {
+          setSelectedUserId(null)
+          setSelectedUserRect(null)
+        }}
+        position={selectedUserRect}
       />
     </div>
   )
