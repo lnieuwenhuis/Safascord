@@ -291,23 +291,7 @@ export async function serverRoutes(app: FastifyInstance) {
     const channelId = (req.query as any).channelId as string | undefined
     if (!auth || !id) return { error: "Bad request" }
     try {
-      const payload = jwt.verify(auth.replace(/^Bearer\s+/i, ""), JWT_SECRET) as any
-      
-      // If channelId is provided, we need to filter members who have access to this channel
-      let accessFilter = ""
-      const params = [id]
-      
-      if (channelId) {
-          // Check if channel is private
-          // Validate channelId is a valid UUID before query to prevent crashes
-          const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
-          if (uuidRegex.test(channelId)) {
-              const c = await pool.query(`SELECT is_private FROM channels WHERE id=$1::uuid`, [channelId])
-              if (c.rows[0]?.is_private) {
-                  // Valid private channel, proceed with logic below
-              }
-          }
-      }
+      jwt.verify(auth.replace(/^Bearer\s+/i, ""), JWT_SECRET)
 
       const r = await pool.query(
         `SELECT u.id::text, u.username, u.discriminator, u.display_name as "displayName", u.avatar_url as "avatarUrl",
@@ -326,59 +310,54 @@ export async function serverRoutes(app: FastifyInstance) {
           ...row,
           roles: row.roles.filter((r: any) => r !== null)
       }))
-      
+
       if (channelId) {
-          // Validate UUID
-          const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
-          if (uuidRegex.test(channelId)) {
-              // Filter members who have access to channelId
-              const c = await pool.query(`SELECT is_private, server_id FROM channels WHERE id=$1::uuid`, [channelId])
-              if (c.rows[0]?.is_private) {
-                 // Get channel permissions
-                 const perms = await pool.query(`SELECT role_id, user_id, allow, deny FROM channel_permissions WHERE channel_id=$1::uuid`, [channelId])
-                 const server = await pool.query(`SELECT owner_id FROM servers WHERE id=$1::uuid`, [id])
-                 const ownerId = server.rows[0]?.owner_id
-                 
-                 // Get all roles with ADMINISTRATOR
-                 const adminRoles = await pool.query(`SELECT id FROM roles WHERE server_id=$1::uuid AND (permissions & 8) = 8`, [id])
-                 const adminRoleIds = new Set(adminRoles.rows.map(r => r.id))
-                 
-                 members = members.filter(m => {
-                     if (m.id === ownerId) return true
-                     if (m.roles.some((r: string) => adminRoleIds.has(r))) return true
-                     
-                     // Check overrides
-                     // 1. User specific
-                     const userPerm = perms.rows.find(p => p.user_id === m.id)
-                     if (userPerm) {
-                         if ((userPerm.allow & 1024) === 1024) return true // VIEW_CHANNEL
-                         if ((userPerm.deny & 1024) === 1024) return false
-                     }
-                     
-                     // 2. Role specific
-                     let allow = false
-                     let deny = false
-                     for (const rid of m.roles) {
-                         const rp = perms.rows.find(p => p.role_id === rid)
-                         if (rp) {
-                             if ((rp.allow & 1024) === 1024) allow = true
-                             if ((rp.deny & 1024) === 1024) deny = true
-                         }
-                     }
-                     
-                     // @everyone role (usually role_id matches server_id in some schemas, or we need to find it)
-                     // In our schema, @everyone is just a role. We need to know its ID.
-                     // Usually it's the role with position 0 or name '@everyone'.
-                     // Let's assume we don't have it easily here without fetching.
-                     // But typically private channels DENY @everyone and ALLOW specific roles.
-                     
-                     if (deny) return false
-                     if (allow) return true
-                     
-                     return false // Private means default deny unless allowed
-                 })
-              }
-          }
+        const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+        if (!uuidRegex.test(channelId)) return { members }
+
+        const [channelRes, permsRes, ownerRes, adminRolesRes] = await Promise.all([
+          pool.query(
+            `SELECT id::text AS id
+             FROM channels
+             WHERE id = $1::uuid AND server_id = $2::uuid
+             LIMIT 1`,
+            [channelId, id]
+          ),
+          pool.query(
+            `SELECT role_id::text AS role_id, can_view
+             FROM channel_permissions
+             WHERE channel_id = $1::uuid`,
+            [channelId]
+          ),
+          pool.query(`SELECT owner_id::text AS owner_id FROM servers WHERE id = $1::uuid LIMIT 1`, [id]),
+          pool.query(
+            `SELECT id::text AS id
+             FROM roles
+             WHERE server_id = $1::uuid
+               AND (can_manage_server = TRUE OR can_manage_channels = TRUE)`,
+            [id]
+          ),
+        ])
+
+        if (!channelRes.rowCount) return { members: [] }
+
+        const perms = permsRes.rows as { role_id: string; can_view: boolean }[]
+        if (perms.length > 0) {
+          const ownerId = String(ownerRes.rows[0]?.owner_id || "")
+          const adminRoleIds = new Set((adminRolesRes.rows as { id: string }[]).map((row) => String(row.id)))
+          const allowedRoleIds = new Set(
+            perms
+              .filter((row) => !!row.can_view)
+              .map((row) => String(row.role_id))
+          )
+
+          members = members.filter((member) => {
+            if (member.id === ownerId) return true
+            const roleIds = (member.roles as string[]).map((x) => String(x))
+            if (roleIds.some((roleId) => adminRoleIds.has(roleId))) return true
+            return roleIds.some((roleId) => allowedRoleIds.has(roleId))
+          })
+        }
       }
       
       return { members }

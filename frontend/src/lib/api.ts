@@ -32,6 +32,7 @@ export const API_BASE = configuredApiBase || (import.meta.env.DEV ? "http://loca
 export const WS_BASE = configuredWsBase || (import.meta.env.DEV ? "ws://localhost:4001/ws" : `${window.location.protocol === "https:" ? "wss://" : "ws://"}${window.location.host}/ws`)
 
 function resolveSocketWsUrl(candidate?: string): string {
+  if (configuredWsBase) return WS_BASE
   if (!candidate) return WS_BASE
   try {
     const parsed = new URL(candidate)
@@ -40,6 +41,8 @@ function resolveSocketWsUrl(candidate?: string): string {
 
     const isLocalhostTarget = parsed.hostname === "localhost" || parsed.hostname === "127.0.0.1"
     if (!import.meta.env.DEV && isLocalhostTarget) return WS_BASE
+    const isRailwayTarget = parsed.hostname.endsWith(".up.railway.app")
+    if (!import.meta.env.DEV && isRailwayTarget) return WS_BASE
 
     return candidate
   } catch {
