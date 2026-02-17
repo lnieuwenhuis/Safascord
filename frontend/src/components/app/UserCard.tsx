@@ -19,7 +19,6 @@ const statusConfig = {
 interface ProfileCardProps {
   displayName: string
   username: string
-  userId?: string
   bio: string
   avatarUrl: string | null
   bannerUrl: string | null
@@ -44,7 +43,6 @@ interface ProfileCardProps {
 export function ProfileCard({
   displayName,
   username,
-  userId,
   bio,
   avatarUrl,
   bannerUrl,
@@ -124,11 +122,6 @@ export function ProfileCard({
             {username}
             {discriminator && <span className="opacity-70">#{discriminator}</span>}
           </div>
-          {userId && (
-            <div className="text-xs text-muted-foreground/90">
-              ID: <span className="font-mono break-all">{userId}</span>
-            </div>
-          )}
         </div>
 
         <div className="mt-3 text-sm whitespace-pre-wrap wrap-break-word">
@@ -524,7 +517,6 @@ export default function UserCard() {
             style={{ left: `${profileLeft}px`, top: `${profileTop}px` }}
             displayName={displayName}
             username={username}
-            userId={user?.id}
             bio={bio}
             avatarUrl={avatarImage}
             bannerUrl={bannerImage}
@@ -666,7 +658,6 @@ export default function UserCard() {
                   className="shadow-xl relative"
                   displayName={tempDisplayName}
                   username={username}
-                  userId={user?.id}
                   bio={tempBio}
                   avatarUrl={tempAvatarImage}
                   bannerUrl={tempBannerImage}

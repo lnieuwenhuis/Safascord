@@ -164,7 +164,6 @@ export default function UserProfilePopover({ userId, serverId, isOpen, onClose, 
           <ProfileCard
             displayName={user.displayName || user.username}
             username={user.username}
-            userId={user.id}
             bio={user.bio || ""}
             avatarUrl={getFullUrl(user.avatarUrl)}
             bannerUrl={getFullUrl(user.bannerUrl)}
