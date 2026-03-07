@@ -875,7 +875,13 @@ export default function ChatPanel({ variant, channelName, channelId, guildName, 
                  lastDate = mDate
               }
 
-              if (currentGroup && currentGroup.user === m.user) {
+              const sameAuthor = Boolean(
+                currentGroup
+                  && ((currentGroup.userId && m.userId && currentGroup.userId === m.userId)
+                    || (!currentGroup.userId && !m.userId && currentGroup.user === m.user)),
+              )
+
+              if (currentGroup && sameAuthor) {
                  const lastMsg = currentGroup.messages[currentGroup.messages.length - 1]
                  const lastTime = lastMsg.ts ? new Date(lastMsg.ts).getTime() : 0
                  const currTime = mDate.getTime()
@@ -915,8 +921,8 @@ export default function ChatPanel({ variant, channelName, channelId, guildName, 
               const first = g.messages[0]
               
               // Use current user avatar if userId matches
-              const isMe = user && (g.userId === user.id || g.user === display)
-              const avatarUrl = isMe && user.avatarUrl 
+              const isMe = Boolean(user && g.userId && g.userId === user.id)
+              const avatarUrl = isMe && user?.avatarUrl 
                 ? getFullUrl(user.avatarUrl)
                 : getFullUrl(g.userAvatar)
 
@@ -942,7 +948,7 @@ export default function ChatPanel({ variant, channelName, channelId, guildName, 
                     {/* Messages Loop */}
                     {g.messages.map((it, idx) => {
                       const isEditing = editingId === it.id
-                      const isMyMessage = isMe || (user && g.userId === user.id)
+                      const isMyMessage = Boolean(user && g.userId && g.userId === user.id)
                       const isMentioned = user && it.text.includes(`@${user.username}`)
                       const prevMsg = idx > 0 ? g.messages[idx - 1] : null
                       const prevIsMentioned = prevMsg && user && prevMsg.text.includes(`@${user.username}`)
@@ -961,7 +967,7 @@ export default function ChatPanel({ variant, channelName, channelId, guildName, 
                                 }}
                                 style={{ color: g.roleColor || undefined }}
                               >
-                                 {isMe && user.displayName ? user.displayName : g.user}
+                                 {isMe && user?.displayName ? user.displayName : g.user}
                                </div>
                                {first.ts && <div className="text-xs text-slate-300/60">{fmt(first.ts)}</div>}
                              </div>
