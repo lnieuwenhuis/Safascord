@@ -1,0 +1,74 @@
+openapi: 3.1.0
+info:
+  title: Safascord API Compatibility Surface
+  version: 0.1.0
+  description: |
+    Snapshot of the frontend-visible REST surface being preserved during the
+    Rust migration. This is intentionally compatibility-focused rather than a
+    cleaned-up redesign.
+servers:
+  - url: http://localhost:4000
+paths:
+  /api/health:
+    get:
+      summary: API liveness
+      responses:
+        '200':
+          description: OK
+  /api/ready:
+    get:
+      summary: API readiness
+      responses:
+        '200':
+          description: Ready
+        '503':
+          description: Dependency unavailable
+  /api/auth/register:
+    post:
+      summary: Register
+  /api/auth/login:
+    post:
+      summary: Login
+  /api/auth/shoo:
+    post:
+      summary: Authenticate using Shoo ID token
+  /api/me:
+    get:
+      summary: Current user profile
+  /api/me/profile:
+    patch:
+      summary: Update profile
+  /api/me/display-name:
+    patch:
+      summary: Update display name
+  /api/servers:
+    get:
+      summary: List joined servers
+    post:
+      summary: Create server
+  /api/channels:
+    get:
+      summary: List channels
+    post:
+      summary: Create channel
+  /api/messages:
+    get:
+      summary: List messages
+    post:
+      summary: Create message
+  /api/socket-info:
+    get:
+      summary: Realtime endpoint discovery
+  /api/upload:
+    post:
+      summary: Upload attachment
+  /api/notifications:
+    get:
+      summary: List notifications
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
