@@ -71,84 +71,84 @@ async fn main() -> Result<()> {
         .route("/api/me/profile", patch(update_profile))
         .route("/api/me/display-name", patch(update_display_name))
         .route("/api/users", get(list_users))
-        .route("/api/users/:id/profile", get(get_user_profile))
+        .route("/api/users/{id}/profile", get(get_user_profile))
         .route("/api/friends", get(get_friends))
         .route("/api/friends/requests", get(get_friend_requests))
         .route("/api/friends/request", post(send_friend_request))
         .route(
-            "/api/friends/requests/:id/:action",
+            "/api/friends/requests/{id}/{action}",
             post(respond_friend_request),
         )
-        .route("/api/friends/:friendId", delete(remove_friend))
+        .route("/api/friends/{friendId}", delete(remove_friend))
         .route("/api/dms", get(list_dms).post(create_dm))
         .route("/api/channels", get(list_channels).post(create_channel))
         .route(
-            "/api/channels/:id",
+            "/api/channels/{id}",
             patch(update_channel).delete(delete_channel),
         )
         .route(
-            "/api/channels/:id/permissions",
+            "/api/channels/{id}/permissions",
             get(get_channel_permissions),
         )
         .route("/api/channel-by-name", get(channel_by_name))
         .route("/api/categories", post(create_category))
         .route(
-            "/api/categories/:id",
+            "/api/categories/{id}",
             patch(update_category).delete(delete_category),
         )
         .route("/api/servers", get(list_servers).post(create_server))
         .route(
-            "/api/servers/:id",
+            "/api/servers/{id}",
             patch(update_server).delete(delete_server),
         )
-        .route("/api/servers/:id/members/me", delete(leave_server))
-        .route("/api/servers/:id/invites", post(create_invite))
-        .route("/api/invites/:code", get(invite_info))
-        .route("/api/invites/:code/accept", post(accept_invite))
-        .route("/api/servers/:id/members", get(get_server_members))
+        .route("/api/servers/{id}/members/me", delete(leave_server))
+        .route("/api/servers/{id}/invites", post(create_invite))
+        .route("/api/invites/{code}", get(invite_info))
+        .route("/api/invites/{code}/accept", post(accept_invite))
+        .route("/api/servers/{id}/members", get(get_server_members))
         .route(
-            "/api/servers/:id/members/:userId",
+            "/api/servers/{id}/members/{userId}",
             delete(delete_member).patch(update_member_legacy),
         )
-        .route("/api/servers/:id/members/:userId/mute", post(mute_member))
-        .route("/api/servers/:id/bans", post(create_ban))
+        .route("/api/servers/{id}/members/{userId}/mute", post(mute_member))
+        .route("/api/servers/{id}/bans", post(create_ban))
         .route(
-            "/api/servers/:serverId/members/:userId/roles",
+            "/api/servers/{serverId}/members/{userId}/roles",
             patch(update_member_roles),
         )
         .route(
-            "/api/servers/:serverId/members/:userId/kick",
+            "/api/servers/{serverId}/members/{userId}/kick",
             post(kick_member),
         )
         .route(
-            "/api/servers/:serverId/members/:userId/ban",
+            "/api/servers/{serverId}/members/{userId}/ban",
             post(ban_member),
         )
-        .route("/api/servers/:id/roles", get(get_roles).post(create_role))
+        .route("/api/servers/{id}/roles", get(get_roles).post(create_role))
         .route(
-            "/api/servers/:id/roles/:roleId",
+            "/api/servers/{id}/roles/{roleId}",
             patch(update_role).delete(delete_role),
         )
-        .route("/api/servers/:id/members/:userId", get(get_member))
+        .route("/api/servers/{id}/members/{userId}", get(get_member))
         .route("/api/messages", get(get_messages).post(create_message))
         .route("/api/socket-info", get(socket_info))
         .route(
-            "/api/messages/:id",
+            "/api/messages/{id}",
             delete(delete_message).patch(edit_message),
         )
         .route("/api/upload", post(upload_file))
-        .route("/api/uploads/:key", get(get_upload))
+        .route("/api/uploads/{key}", get(get_upload))
         .route("/api/notifications", get(get_notifications))
-        .route("/api/notifications/:id/read", post(mark_notification_read))
+        .route("/api/notifications/{id}/read", post(mark_notification_read))
         .route(
-            "/api/notifications/channel/:channelId/read",
+            "/api/notifications/channel/{channelId}/read",
             post(mark_channel_notifications_read),
         )
         .route(
             "/api/notifications/read-all",
             post(mark_all_notifications_read),
         )
-        .route("/api/notifications/:id", delete(delete_notification))
+        .route("/api/notifications/{id}", delete(delete_notification))
         .route("/api/stats/summary", get(stats_summary))
         .route("/api/stats/activity", get(stats_activity))
         .route("/api/stats/system", get(stats_system))
