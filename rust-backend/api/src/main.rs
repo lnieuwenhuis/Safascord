@@ -23,6 +23,7 @@ use safascord_core::util::{random_string, to_safe_username};
 use safascord_core::{AppState, SharedState};
 use serde::Deserialize;
 use serde_json::{json, Value};
+use jsonwebtoken::jwk::Jwk;
 use sqlx::{postgres::PgRow, PgPool, Row};
 use tokio::fs;
 use tower_http::cors::{Any, CorsLayer};
@@ -565,16 +566,6 @@ struct Jwks {
     keys: Vec<Jwk>,
 }
 
-#[derive(Debug, Deserialize)]
-#[allow(dead_code)]
-struct Jwk {
-    kid: Option<String>,
-    kty: Option<String>,
-    alg: Option<String>,
-    n: Option<String>,
-    e: Option<String>,
-}
-
 async fn auth_shoo(
     State(state): State<SharedState>,
     headers: HeaderMap,
@@ -630,12 +621,10 @@ async fn verify_shoo_id_token(
     let jwk = jwks
         .keys
         .into_iter()
-        .find(|key| key.kid.as_deref() == Some(kid.as_str()))
+        .find(|key| key.common.key_id.as_deref() == Some(kid.as_str()))
         .ok_or_else(|| anyhow!("No matching Shoo JWK"))?;
-    let n = jwk.n.ok_or_else(|| anyhow!("Missing modulus"))?;
-    let e = jwk.e.ok_or_else(|| anyhow!("Missing exponent"))?;
-    let key = jsonwebtoken::DecodingKey::from_rsa_components(&n, &e)?;
-    let mut validation = jsonwebtoken::Validation::new(jsonwebtoken::Algorithm::RS256);
+    let key = jsonwebtoken::DecodingKey::from_jwk(&jwk)?;
+    let mut validation = jsonwebtoken::Validation::new(header.alg);
     let audiences = shoo_audiences(&state.config, origin_hint);
     validation.set_audience(&audiences);
     validation.set_issuer(&[
