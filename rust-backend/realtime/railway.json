@@ -5,10 +5,9 @@
     "buildCommand": "cargo build --release -p safascord-realtime"
   },
   "deploy": {
-    "startCommand": "../target/release/safascord-realtime",
+    "startCommand": "target/release/safascord-realtime",
     "healthcheckPath": "/health",
     "restartPolicyType": "ON_FAILURE",
     "restartPolicyMaxRetries": 10
   }
 }
-

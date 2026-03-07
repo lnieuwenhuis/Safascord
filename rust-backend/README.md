@@ -15,11 +15,19 @@ Deployment assets:
 - `railway.api.json`
 - `railway.realtime.json`
 
-Railway subdirectory deploys:
-- Set API Root Directory to `/rust-backend/api`
-- Set realtime Root Directory to `/rust-backend/realtime`
-- Each folder now contains its own `railway.json`
-- These use Cargo/Nixpacks directly from the service subdirectory instead of the older repo-root Dockerfiles
+Railway deployment:
+- Do not set the service Root Directory to `/rust-backend/api` or `/rust-backend/realtime`.
+- Railway only uploads files under the selected Root Directory, so those settings exclude the workspace root `Cargo.toml` and the shared `core/` crate.
+- Recommended Nixpacks setup:
+  - API Root Directory: `/rust-backend`
+  - API Railway Config File: `/rust-backend/api/railway.json`
+  - Realtime Root Directory: `/rust-backend`
+  - Realtime Railway Config File: `/rust-backend/realtime/railway.json`
+- Alternative Docker setup from the repo root:
+  - API Root Directory: `/`
+  - API Railway Config File: `/rust-backend/railway.api.json`
+  - Realtime Root Directory: `/`
+  - Realtime Railway Config File: `/rust-backend/railway.realtime.json`
 
 The existing `backend/` and `realtime/` TypeScript services remain in the repo
 until cutover. This workspace is intended to replace them without changing the
