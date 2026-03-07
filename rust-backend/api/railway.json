@@ -5,10 +5,9 @@
     "buildCommand": "cargo build --release -p safascord-api"
   },
   "deploy": {
-    "startCommand": "../target/release/safascord-api",
+    "startCommand": "target/release/safascord-api",
     "healthcheckPath": "/api/health",
     "restartPolicyType": "ON_FAILURE",
     "restartPolicyMaxRetries": 10
   }
 }
-
