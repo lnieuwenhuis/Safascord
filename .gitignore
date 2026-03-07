@@ -47,3 +47,8 @@ pnpm-lock.yaml
 frontend/package-lock.json
 backend/bun.lock
 *.lock
+!rust-backend/Cargo.lock
+target/
+rust-backend/target/
+rust-backend/.cargo-home/
+.sqlx/
