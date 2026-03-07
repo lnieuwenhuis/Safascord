@@ -69,7 +69,7 @@ async fn main() -> Result<()> {
         )
         .init();
 
-    let config = AppConfig::from_env(4001)?;
+    let config = AppConfig::from_env_without_database(4001)?;
     let redis_url = config
         .redis_url
         .clone()
