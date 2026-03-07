@@ -18,12 +18,13 @@ Deployment assets:
 Railway deployment:
 - Do not set the service Root Directory to `/rust-backend/api` or `/rust-backend/realtime`.
 - Railway only uploads files under the selected Root Directory, so those settings exclude the workspace root `Cargo.toml` and the shared `core/` crate.
-- Recommended Nixpacks setup:
+- Recommended service setup:
   - API Root Directory: `/rust-backend`
   - API Railway Config File: `/rust-backend/api/railway.json`
   - Realtime Root Directory: `/rust-backend`
   - Realtime Railway Config File: `/rust-backend/realtime/railway.json`
-- Alternative Docker setup from the repo root:
+- These service-local Railway configs use Dockerfiles inside `api/` and `realtime/`, with the build context set to the workspace root.
+- Alternative repo-root Docker setup:
   - API Root Directory: `/`
   - API Railway Config File: `/rust-backend/railway.api.json`
   - Realtime Root Directory: `/`
