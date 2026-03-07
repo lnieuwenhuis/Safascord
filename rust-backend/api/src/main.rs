@@ -189,8 +189,14 @@ async fn request_timing(
 }
 
 async fn run_migrations(pool: &PgPool) -> Result<()> {
-    let migration_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../migrations");
-    let mut files = fs::read_dir(migration_dir).await?;
+    let runtime_dir = Path::new("/app/migrations");
+    let source_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../migrations");
+    let migration_dir = if fs::try_exists(runtime_dir).await? {
+        runtime_dir.to_path_buf()
+    } else {
+        source_dir
+    };
+    let mut files = fs::read_dir(&migration_dir).await?;
     let mut paths = Vec::new();
     while let Some(entry) = files.next_entry().await? {
         paths.push(entry.path());

@@ -27,7 +27,18 @@ pub struct AppConfig {
 
 impl AppConfig {
     pub fn from_env(default_port: u16) -> Result<Self> {
-        let database_url = env::var("DATABASE_URL").context("DATABASE_URL is required")?;
+        Self::from_env_with_database(default_port, Some("DATABASE_URL is required"))
+    }
+
+    pub fn from_env_without_database(default_port: u16) -> Result<Self> {
+        Self::from_env_with_database(default_port, None)
+    }
+
+    fn from_env_with_database(default_port: u16, database_required: Option<&str>) -> Result<Self> {
+        let database_url = match database_required {
+            Some(message) => env::var("DATABASE_URL").with_context(|| message.to_string())?,
+            None => env::var("DATABASE_URL").unwrap_or_default(),
+        };
         let jwt_secret = env::var("JWT_SECRET").unwrap_or_else(|_| "dev_change_me".to_string());
         let port = env::var("PORT")
             .ok()
