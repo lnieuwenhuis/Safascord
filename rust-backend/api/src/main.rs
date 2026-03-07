@@ -207,7 +207,7 @@ async fn run_migrations(pool: &PgPool) -> Result<()> {
             continue;
         }
         let sql = fs::read_to_string(&path).await?;
-        sqlx::query(&sql).execute(pool).await.with_context(|| {
+        sqlx::raw_sql(&sql).execute(pool).await.with_context(|| {
             format!(
                 "failed to run migration {}",
                 path.file_name().unwrap().to_string_lossy()
