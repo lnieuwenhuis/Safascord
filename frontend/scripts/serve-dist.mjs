@@ -7,6 +7,7 @@ import { fileURLToPath } from "node:url"
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 const distDir = path.resolve(__dirname, "../dist")
+const distDirPrefix = `${distDir}${path.sep}`
 const indexPath = path.join(distDir, "index.html")
 const port = Number(process.env.PORT || 3000)
 
@@ -39,13 +40,38 @@ function sendFile(res, filePath) {
   createReadStream(filePath).pipe(res)
 }
 
+function resolveDistPath(requestPathname) {
+  const relativePath = requestPathname.replace(/^[/\\]+/, "")
+  const resolvedPath = path.resolve(distDir, relativePath)
+  const isInsideDist = resolvedPath === distDir || resolvedPath.startsWith(distDirPrefix)
+
+  return isInsideDist ? resolvedPath : null
+}
+
 const server = http.createServer(async (req, res) => {
-  const url = new URL(req.url || "/", "http://127.0.0.1")
-  const requestedPath = decodeURIComponent(url.pathname)
-  const normalizedPath = path.normalize(requestedPath).replace(/^(\.\.[/\\])+/, "")
-  let filePath = path.join(distDir, normalizedPath)
+  let filePath
 
   try {
+    try {
+      const url = new URL(req.url || "/", "http://127.0.0.1")
+      const requestedPath = decodeURIComponent(url.pathname)
+      filePath = resolveDistPath(requestedPath)
+    } catch (error) {
+      if (error instanceof TypeError || error instanceof URIError) {
+        res.writeHead(400, { "Content-Type": "text/plain; charset=utf-8" })
+        res.end("Bad request")
+        return
+      }
+
+      throw error
+    }
+
+    if (!filePath) {
+      res.writeHead(403, { "Content-Type": "text/plain; charset=utf-8" })
+      res.end("Forbidden")
+      return
+    }
+
     const fileStat = await stat(filePath).catch(() => null)
 
     if (fileStat?.isDirectory()) {
