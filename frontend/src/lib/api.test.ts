@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest"
-import { api, getFullUrl } from "./api"
+import { API_BASE, api, getFullUrl } from "./api"
 
 function jsonResponse(body: unknown, init: ResponseInit = {}) {
   return new Response(JSON.stringify(body), {
@@ -13,8 +13,10 @@ function jsonResponse(body: unknown, init: ResponseInit = {}) {
 
 describe("getFullUrl", () => {
   it("normalizes relative API urls against the configured base", () => {
-    expect(getFullUrl("/api/uploads/file.png")).toBe("http://localhost/api/uploads/file.png")
-    expect(getFullUrl("/avatars/user.png")).toBe("http://localhost/api/avatars/user.png")
+    const apiOrigin = API_BASE.endsWith("/api") ? API_BASE.slice(0, -4) : API_BASE
+
+    expect(getFullUrl("/api/uploads/file.png")).toBe(`${apiOrigin}/api/uploads/file.png`)
+    expect(getFullUrl("/avatars/user.png")).toBe(`${API_BASE}/avatars/user.png`)
   })
 
   it("preserves absolute http urls and blocks unsafe schemes", () => {
