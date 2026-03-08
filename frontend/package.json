@@ -16,7 +16,8 @@
     "test": "vitest",
     "test:run": "vitest run",
     "test:coverage": "vitest run --coverage",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "serve:static": "node scripts/serve-dist.mjs"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",
