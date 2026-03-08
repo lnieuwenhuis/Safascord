@@ -4,6 +4,7 @@ import { HeadBucketCommand, ListObjectsV2Command, ListBucketsCommand, GetBucketP
 import { s3, BUCKET_NAME } from "../lib/s3.js"
 import { checkDatabaseConnection } from "../lib/db.js"
 import { checkRedisConnection } from "../lib/redis.js"
+import { requireAdminUser } from "../lib/auth.js"
 
 export async function miscRoutes(app: FastifyInstance) {
   app.get("/api/health", async () => ({
@@ -58,7 +59,9 @@ export async function miscRoutes(app: FastifyInstance) {
   const debugEnabled = process.env.ENABLE_DEBUG_ROUTES === "true"
   if (!debugEnabled) return
 
-  app.get("/api/debug/s3", async () => {
+  app.get("/api/debug/s3", async (req, reply) => {
+    const admin = await requireAdminUser(req)
+    if (!admin) return reply.status(403).send({ error: "Forbidden" })
     try {
       const buckets = await s3.send(new ListBucketsCommand({}))
       let objects: any[] = []
@@ -84,7 +87,9 @@ export async function miscRoutes(app: FastifyInstance) {
     }
   })
 
-  app.get("/api/debug/db", async () => {
+  app.get("/api/debug/db", async (req, reply) => {
+    const admin = await requireAdminUser(req)
+    if (!admin) return reply.status(403).send({ error: "Forbidden" })
     try {
       const tables = await pool.query(`SELECT table_name FROM information_schema.tables WHERE table_schema='public'`)
       // Use try-catch for users query in case table doesn't exist
@@ -104,7 +109,9 @@ export async function miscRoutes(app: FastifyInstance) {
     }
   })
 
-  app.post("/api/debug/migrate", async () => {
+  app.post("/api/debug/migrate", async (req, reply) => {
+    const admin = await requireAdminUser(req)
+    if (!admin) return reply.status(403).send({ error: "Forbidden" })
     try {
       await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS bio TEXT;`)
       await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS banner_color TEXT DEFAULT '#000000';`)
@@ -120,7 +127,9 @@ export async function miscRoutes(app: FastifyInstance) {
     }
   })
 
-  app.delete("/api/debug/seed-data", async () => {
+  app.delete("/api/debug/seed-data", async (req, reply) => {
+     const admin = await requireAdminUser(req)
+     if (!admin) return reply.status(403).send({ error: "Forbidden" })
      try {
        await pool.query("DELETE FROM friendships")
        await pool.query("DELETE FROM channels WHERE type='dm'")

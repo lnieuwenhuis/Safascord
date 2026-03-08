@@ -5,13 +5,12 @@ import {
 } from "recharts"
 import { Activity, Users, Server, MessageSquare, Clock, Cpu, Database, HardDrive, Zap } from "lucide-react"
 import { api } from "../../lib/api"
+import { useAuth } from "../../hooks/useAuth"
 import type { StatsActivityResponse, StatsSummaryResponse, StatsSystemResponse } from "@/types"
 import type { StatsActivityMessagePerHour, StatsActivityUsersPerDay, StatsMetrics } from "../../types/responses"
 
 export function StatsPage() {
-  const [isAuthenticated, setIsAuthenticated] = useState(false)
-  const [username, setUsername] = useState("")
-  const [password, setPassword] = useState("")
+  const { token } = useAuth()
   const [error, setError] = useState("")
 
   const [summary, setSummary] = useState<StatsSummaryResponse>()
@@ -22,29 +21,28 @@ export function StatsPage() {
   const [interval, setIntervalRange] = useState("10m") // Default interval
 
   useEffect(() => {
-    const storedAuth = sessionStorage.getItem("admin_auth")
-    if (storedAuth === "true") {
-      setIsAuthenticated(true)
+    if (!token) {
+      setError("Authentication required.")
+      setLoading(false)
+      return
     }
-  }, [])
-
-  useEffect(() => {
-    if (!isAuthenticated) return
 
     const fetchStats = async () => {
       try {
         const [s, a, sys, m] = await Promise.all([
-          api.getStatsSummary(),
-          api.getStatsActivity(),
-          api.getStatsSystem(),
-          api.getStatsMetrics(interval)
+          api.getStatsSummary(token),
+          api.getStatsActivity(token),
+          api.getStatsSystem(token),
+          api.getStatsMetrics(token, interval)
         ])
         setSummary(s)
         setActivity(a)
         setSystem(sys)
         setMetrics(m.metrics || [])
+        setError("")
       } catch (e) {
         console.error(e)
+        setError(e instanceof Error ? e.message : "Failed to load stats")
       } finally {
         setLoading(false)
       }
@@ -52,54 +50,14 @@ export function StatsPage() {
     fetchStats()
     const timer = setInterval(fetchStats, 10000) // Refresh every 10s
     return () => clearInterval(timer)
-  }, [isAuthenticated, interval])
+  }, [interval, token])
 
-  const handleLogin = (e: React.FormEvent) => {
-    e.preventDefault()
-    const adminUser = import.meta.env.VITE_ADMIN_USERNAME
-    const adminPass = import.meta.env.VITE_ADMIN_PASSWORD
-    
-    if (username === adminUser && password === adminPass) {
-      setIsAuthenticated(true)
-      sessionStorage.setItem("admin_auth", "true")
-      setError("")
-    } else {
-      setError("Invalid credentials")
-    }
-  }
-
-  if (!isAuthenticated) {
+  if (error && !loading && !summary) {
     return (
       <div className="flex items-center justify-center h-screen bg-background text-foreground">
-        <div className="bg-card p-8 rounded-lg shadow-lg w-96 border border-border">
-          <h1 className="text-2xl font-bold mb-6 text-center">Admin Login</h1>
-          <form onSubmit={handleLogin} className="space-y-4">
-            {error && <div className="text-destructive text-sm text-center bg-destructive/10 p-2 rounded">{error}</div>}
-            <div>
-              <label className="block text-xs font-bold text-muted-foreground uppercase mb-2">Username</label>
-              <input 
-                type="text" 
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
-                className="w-full bg-input text-foreground p-2 rounded outline-none focus:ring-2 focus:ring-ring"
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-bold text-muted-foreground uppercase mb-2">Password</label>
-              <input 
-                type="password" 
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className="w-full bg-input text-foreground p-2 rounded outline-none focus:ring-2 focus:ring-ring"
-              />
-            </div>
-            <button 
-              type="submit"
-              className="w-full bg-primary hover:bg-primary/90 text-primary-foreground p-2 rounded font-medium transition-colors"
-            >
-              Log In
-            </button>
-          </form>
+        <div className="bg-card p-8 rounded-lg shadow-lg w-96 border border-border text-center">
+          <h1 className="text-2xl font-bold mb-4">Admin Access Required</h1>
+          <p className="text-sm text-muted-foreground">{error}</p>
         </div>
       </div>
     )

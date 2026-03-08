@@ -4,11 +4,43 @@ import { PutObjectCommand, GetObjectCommand, ListObjectsV2Command, DeleteObjects
 import { s3, BUCKET_NAME, STORAGE_PUBLIC_URL } from "../lib/s3.js"
 import { Readable } from "stream"
 import { pool } from "../lib/db.js"
+import { getRequestUser } from "../lib/auth.js"
 
 type ObjectType = {
   Key: string;
   LastModified: Date;
 }
+
+const MAX_UPLOAD_BYTES = 50 * 1024 * 1024
+const OBJECT_KEY_RE = /^[a-zA-Z0-9._-]+$/
+const ALLOWED_MIME_TYPES = new Set([
+  "image/jpeg",
+  "image/png",
+  "image/gif",
+  "image/webp",
+  "image/avif",
+  "video/mp4",
+  "video/webm",
+  "video/quicktime",
+  "audio/mpeg",
+  "audio/ogg",
+  "audio/wav",
+  "application/pdf",
+  "text/plain",
+])
+const INLINE_MIME_TYPES = new Set([
+  "image/jpeg",
+  "image/png",
+  "image/gif",
+  "image/webp",
+  "image/avif",
+  "video/mp4",
+  "video/webm",
+  "video/quicktime",
+  "audio/mpeg",
+  "audio/ogg",
+  "audio/wav",
+])
 
 function readEnv(...keys: string[]) {
   for (const key of keys) {
@@ -30,16 +62,22 @@ function extensionFromMimeType(mimeType?: string) {
     "image/gif": ".gif",
     "image/webp": ".webp",
     "image/avif": ".avif",
-    "image/svg+xml": ".svg",
     "video/mp4": ".mp4",
     "video/webm": ".webm",
     "video/quicktime": ".mov",
     "audio/mpeg": ".mp3",
     "audio/ogg": ".ogg",
+    "audio/wav": ".wav",
     "application/pdf": ".pdf",
     "text/plain": ".txt",
   }
   return map[mimeType] || ""
+}
+
+function contentDispositionFor(mimeType: string, filename: string) {
+  const sanitizedFilename = filename.replace(/[^a-zA-Z0-9._-]/g, "_")
+  const dispositionType = INLINE_MIME_TYPES.has(mimeType) ? "inline" : "attachment"
+  return `${dispositionType}; filename="${sanitizedFilename}"`
 }
 
 async function cleanupStorage() {
@@ -131,6 +169,9 @@ export async function uploadRoutes(app: FastifyInstance) {
 
   app.get("/api/uploads/:key", async (req, reply) => {
      const { key } = req.params as { key: string }
+     if (!OBJECT_KEY_RE.test(key)) {
+        return reply.status(400).send({ error: "Invalid file key" })
+     }
      try {
         const command = new GetObjectCommand({
            Bucket: BUCKET_NAME,
@@ -138,9 +179,14 @@ export async function uploadRoutes(app: FastifyInstance) {
         })
         const response = await s3.send(command)
         
-        if (response.ContentType) {
-           reply.header("Content-Type", response.ContentType)
-        }
+        const contentType = response.ContentType && ALLOWED_MIME_TYPES.has(response.ContentType)
+          ? response.ContentType
+          : "application/octet-stream"
+
+        reply.header("Content-Type", contentType)
+        reply.header("Content-Disposition", contentDispositionFor(contentType, key))
+        reply.header("X-Content-Type-Options", "nosniff")
+        reply.header("Content-Security-Policy", "default-src 'none'; sandbox")
         reply.header("Cache-Control", "public, max-age=31536000")
         
         return reply.send(response.Body as Readable)
@@ -150,21 +196,25 @@ export async function uploadRoutes(app: FastifyInstance) {
   })
 
   app.post("/api/upload", async (req, reply) => {
-    const data = await req.file()
+    if (!getRequestUser(req)) return reply.status(401).send({ error: "Unauthorized" })
+
+    const data = await req.file({ limits: { files: 1, fileSize: MAX_UPLOAD_BYTES } })
     if (!data) return reply.status(400).send({ error: "No file" })
+    if (!ALLOWED_MIME_TYPES.has(data.mimetype)) {
+      return reply.status(415).send({ error: "Unsupported file type" })
+    }
     const ext = path.extname(data.filename || "") || extensionFromMimeType(data.mimetype)
     const name = `${Date.now()}-${Math.random().toString(36).slice(2)}${ext}`
     
-    // Limit 50MB
     const buffer = await data.toBuffer()
-    if (buffer.length > 50 * 1024 * 1024) return reply.status(413).send({ error: "File too large (max 50MB)" })
+    if (buffer.length > MAX_UPLOAD_BYTES) return reply.status(413).send({ error: "File too large (max 50MB)" })
   
     try {
       await s3.send(new PutObjectCommand({
         Bucket: BUCKET_NAME,
         Key: name,
         Body: buffer,
-        ContentType: data.mimetype
+        ContentType: data.mimetype,
       }))
       // Use proxy URL if configured, otherwise default
       const publicBaseOverride = readEnv("S3_PUBLIC_BASE_URL", "S3_PUBLIC_URL").replace(/\/+$/, "")

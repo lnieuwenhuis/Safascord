@@ -53,7 +53,7 @@ export default function ChannelSidebar({ guildId, activeChannelId }: { guildId?:
   const handleEditChannel = async (channelName: string) => {
      if (!guildId) return
      try {
-       const idRes = await api.channelIdByName(guildId, channelName)
+       const idRes = await api.channelIdByName(authToken, guildId, channelName)
        if (idRes.id) {
           setEditChannelId(idRes.id)
           setEditChannelName(channelName)
@@ -247,7 +247,7 @@ export default function ChannelSidebar({ guildId, activeChannelId }: { guildId?:
           setConfirmOpen(false)
           if (!authToken || !guildId) return
           if (confirmAction === "delete" && editChannel) {
-            const idRes = await api.channelIdByName(guildId, editChannel)
+            const idRes = await api.channelIdByName(authToken, guildId, editChannel)
             if (idRes.id) await api.deleteChannel(authToken, idRes.id)
             loadChannels(true)
           }

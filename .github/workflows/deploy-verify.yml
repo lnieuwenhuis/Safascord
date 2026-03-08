@@ -1,0 +1,105 @@
+name: Deploy Verify
+
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types:
+      - completed
+
+concurrency:
+  group: deploy-verify-${{ github.event.workflow_run.head_branch }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  railway-smoke:
+    name: Railway Smoke Checks
+    if: >-
+      ${{
+        github.event.workflow_run.conclusion == 'success' &&
+        github.event.workflow_run.event == 'push' &&
+        (
+          github.event.workflow_run.head_branch == 'staging' ||
+          github.event.workflow_run.head_branch == 'main' ||
+          github.event.workflow_run.head_branch == 'master'
+        )
+      }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Resolve deploy targets
+        id: targets
+        env:
+          BRANCH_NAME: ${{ github.event.workflow_run.head_branch }}
+          STAGING_FRONTEND_URL: ${{ vars.STAGING_FRONTEND_URL }}
+          STAGING_API_URL: ${{ vars.STAGING_API_URL }}
+          STAGING_REALTIME_URL: ${{ vars.STAGING_REALTIME_URL }}
+          PRODUCTION_FRONTEND_URL: ${{ vars.PRODUCTION_FRONTEND_URL }}
+          PRODUCTION_API_URL: ${{ vars.PRODUCTION_API_URL }}
+          PRODUCTION_REALTIME_URL: ${{ vars.PRODUCTION_REALTIME_URL }}
+        run: |
+          if [[ "$BRANCH_NAME" == "staging" ]]; then
+            {
+              echo "environment=staging"
+              echo "frontend_url=$STAGING_FRONTEND_URL"
+              echo "api_url=$STAGING_API_URL"
+              echo "realtime_url=$STAGING_REALTIME_URL"
+            } >> "$GITHUB_OUTPUT"
+          else
+            {
+              echo "environment=production"
+              echo "frontend_url=$PRODUCTION_FRONTEND_URL"
+              echo "api_url=$PRODUCTION_API_URL"
+              echo "realtime_url=$PRODUCTION_REALTIME_URL"
+            } >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Skip when deploy URLs are not configured
+        if: >-
+          ${{
+            steps.targets.outputs.frontend_url == '' ||
+            steps.targets.outputs.api_url == '' ||
+            steps.targets.outputs.realtime_url == ''
+          }}
+        run: |
+          echo "Set the branch-specific Railway URL repository variables to enable smoke checks."
+
+      - name: Wait for Railway deployment and verify services
+        if: >-
+          ${{
+            steps.targets.outputs.frontend_url != '' &&
+            steps.targets.outputs.api_url != '' &&
+            steps.targets.outputs.realtime_url != ''
+          }}
+        env:
+          FRONTEND_URL: ${{ steps.targets.outputs.frontend_url }}
+          API_URL: ${{ steps.targets.outputs.api_url }}
+          REALTIME_URL: ${{ steps.targets.outputs.realtime_url }}
+          ENVIRONMENT_NAME: ${{ steps.targets.outputs.environment }}
+        run: |
+          poll() {
+            local url="$1"
+            local label="$2"
+            local attempts=20
+
+            for ((i=1; i<=attempts; i++)); do
+              if curl --fail --silent --show-error --location --max-time 15 "$url" > /tmp/check.out; then
+                echo "$label is healthy at $url"
+                cat /tmp/check.out
+                return 0
+              fi
+
+              echo "Attempt $i/$attempts for $label failed; retrying in 15s..."
+              sleep 15
+            done
+
+            echo "$label failed health verification at $url"
+            return 1
+          }
+
+          echo "Running Railway smoke checks for $ENVIRONMENT_NAME"
+          poll "${FRONTEND_URL%/}" "frontend"
+          poll "${API_URL%/}/api/health" "api"
+          poll "${REALTIME_URL%/}/health" "realtime"

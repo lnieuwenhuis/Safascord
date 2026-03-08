@@ -1,9 +1,7 @@
 FROM node:20-alpine AS build
 WORKDIR /app
-# Copy package files (including bun.lock if you want to use it, but npm won't use it directly unless we use bun, so we'll rely on package.json)
-# Ideally we'd have package-lock.json, but since we don't, npm install will generate one.
-COPY package.json ./
-RUN npm install
+COPY package.json package-lock.json ./
+RUN npm ci
 COPY tsconfig.json ./
 COPY src ./src
 RUN npm run build
@@ -11,8 +9,8 @@ RUN npm run build
 FROM node:20-alpine
 WORKDIR /app
 ENV NODE_ENV=production
-COPY package.json ./
-RUN npm install --production
+COPY package.json package-lock.json ./
+RUN npm ci --omit=dev
 COPY --from=build /app/dist ./dist
 EXPOSE 4000
 CMD ["node", "dist/server.js"]

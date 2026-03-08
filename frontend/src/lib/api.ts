@@ -32,7 +32,8 @@ export const WS_BASE = configuredWsBase || (import.meta.env.DEV ? "ws://localhos
 
 export function getFullUrl(url: string | null | undefined): string | null {
   if (!url) return null
-  if (url.startsWith("http") || url.startsWith("data:")) return url
+  if (/^https?:\/\//i.test(url)) return url
+  if (/^(data|javascript):/i.test(url)) return null
   if (url.startsWith("/api") && API_BASE.endsWith("/api")) {
     return `${API_BASE.slice(0, -4)}${url}`
   }
@@ -251,9 +252,12 @@ export const api = {
     if (guildId) url += `&serverId=${encodeURIComponent(guildId)}`
     return get<MessagesResponse>(url, { headers: { Authorization: `Bearer ${token}` } })
   },
-  socketInfo: async (channel?: string) => {
-    void channel
-    return { exists: true, wsUrl: WS_BASE }
+  socketInfo: async (token: string, channel: string, serverId?: string) => {
+    const params = new URLSearchParams({ channel })
+    if (serverId) params.set("serverId", serverId)
+    return request<{ exists: boolean; wsUrl: string; channel: string }>(`/socket-info?${params.toString()}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
   },
   sendMessage: async (token: string, channel: string, content: string, guildId?: string, attachmentUrl?: string) => {
     return request<MessageResponse>("/messages", {
@@ -449,7 +453,9 @@ export const api = {
       headers: { Authorization: `Bearer ${token}` },
     })
   },
-  channelIdByName: (serverId: string, name: string) => get<{ id?: string; error?: string }>(`/channel-by-name?serverId=${encodeURIComponent(serverId)}&name=${encodeURIComponent(name)}`),
+  channelIdByName: (token: string, serverId: string, name: string) => get<{ id?: string; error?: string }>(`/channel-by-name?serverId=${encodeURIComponent(serverId)}&name=${encodeURIComponent(name)}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  }),
   uploadFile: async (token: string, file: File) => {
     const formData = new FormData()
     formData.append("file", file)
@@ -544,8 +550,8 @@ export const api = {
   },
   
   // Stats
-  getStatsSummary: () => get<StatsSummaryResponse>("/stats/summary"),
-  getStatsActivity: () => get<StatsActivityResponse>("/stats/activity"),
-  getStatsSystem: () => get<StatsSystemResponse>("/stats/system"),
-  getStatsMetrics: (range: string) => get<{ metrics: { time: string; cpu: string; memory: string; disk: string; latency: string }[] }>("/stats/metrics?range=" + range)
+  getStatsSummary: (token: string) => get<StatsSummaryResponse>("/stats/summary", { headers: { Authorization: `Bearer ${token}` } }),
+  getStatsActivity: (token: string) => get<StatsActivityResponse>("/stats/activity", { headers: { Authorization: `Bearer ${token}` } }),
+  getStatsSystem: (token: string) => get<StatsSystemResponse>("/stats/system", { headers: { Authorization: `Bearer ${token}` } }),
+  getStatsMetrics: (token: string, range: string) => get<{ metrics: { time: string; cpu: string; memory: string; disk: string; latency: string }[] }>("/stats/metrics?range=" + range, { headers: { Authorization: `Bearer ${token}` } })
 }

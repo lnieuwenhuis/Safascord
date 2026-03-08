@@ -18,7 +18,9 @@ const config: PoolConfig = {
 }
 
 if (isTrue(process.env.DATABASE_SSL, false)) {
-  config.ssl = { rejectUnauthorized: false }
+  config.ssl = {
+    rejectUnauthorized: !isTrue(process.env.DATABASE_SSL_ALLOW_SELF_SIGNED, false),
+  }
 }
 
 export const pool = new Pool(config)

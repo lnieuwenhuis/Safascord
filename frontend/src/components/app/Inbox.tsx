@@ -31,14 +31,15 @@ export default function Inbox() {
   const [open, setOpen] = useState(false)
   const triggerRef = useRef<HTMLDivElement>(null)
   const [anchorRect, setAnchorRect] = useState<DOMRect | null>(null)
-  const dms = useAppCacheStore((state) => state.dms) || []
+  const cachedDms = useAppCacheStore((state) => state.dms)
   const setCachedDms = useAppCacheStore((state) => state.setDms)
   const authToken = token || (typeof window !== "undefined" ? localStorage.getItem("token") || "" : "")
+  const dmCount = cachedDms?.length ?? 0
 
   useEffect(() => {
     if (!open || !authToken) return
     const needsDmNames = notifications.some((n) => (n.sourceType === "dm" || n.channelType === "dm") && !!n.channelId)
-    if (!needsDmNames || dms.length > 0) return
+    if (!needsDmNames || dmCount > 0) return
     let cancelled = false
 
     api.getDMs(authToken).then((res) => {
@@ -49,15 +50,15 @@ export default function Inbox() {
     return () => {
       cancelled = true
     }
-  }, [authToken, dms.length, notifications, open, setCachedDms])
+  }, [authToken, dmCount, notifications, open, setCachedDms])
 
   const dmNameByChannelId = useMemo(() => {
     const map: Record<string, string> = {}
-    for (const dm of dms) {
+    for (const dm of cachedDms ?? []) {
       map[dm.id] = dm.user.displayName || dm.user.username
     }
     return map
-  }, [dms])
+  }, [cachedDms])
 
   const getChannelLabel = (channelId?: string, sourceType?: string, channelType?: string, channelName?: string) => {
     if (!channelId) return null
