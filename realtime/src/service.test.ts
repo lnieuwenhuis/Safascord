@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, vi } from "vitest"
 import {
   REALTIME_TICKET_AUDIENCE,
   REALTIME_TICKET_ISSUER,
+  assertRealtimeRuntimeConfig,
   createRealtimeService,
   rawByteLength,
   verifyRealtimeTicket,
@@ -47,6 +48,19 @@ function waitForOpen(ws: WebSocket) {
 }
 
 describe("realtime helpers", () => {
+  afterEach(() => {
+    delete process.env.NODE_ENV
+  })
+
+  it("enforces strong production jwt secrets", () => {
+    process.env.NODE_ENV = "production"
+
+    expect(() => assertRealtimeRuntimeConfig("dev_change_me")).toThrow(/JWT_SECRET/)
+    expect(() => assertRealtimeRuntimeConfig("")).toThrow(/JWT_SECRET/)
+    expect(() => assertRealtimeRuntimeConfig("too-short-for-production")).toThrow(/JWT_SECRET/)
+    expect(() => assertRealtimeRuntimeConfig("12345678901234567890123456789012")).not.toThrow()
+  })
+
   it("verifies signed realtime tickets", () => {
     const token = jwt.sign(
       {
@@ -132,6 +146,67 @@ describe("realtime service", () => {
     await vi.waitFor(() => {
       expect(pub.publishes).toHaveLength(1)
     })
+
+    ws.close()
+    await service.shutdown("test")
+  })
+
+  it("removes empty channel entries after the linger window expires", async () => {
+    const sub = new FakeRedisClient()
+    const pub = new FakeRedisClient()
+    const logger = { log: vi.fn(), error: vi.fn() }
+    const service = createRealtimeService({
+      port: 0,
+      allowedOrigins: [],
+      jwtSecret: "test-secret",
+      sub,
+      pub,
+      lingerMs: 20,
+      heartbeatMs: 1_000,
+      logger,
+    })
+
+    await service.listen()
+
+    const address = service.server.address()
+    if (!address || typeof address === "string") {
+      throw new Error("Expected an ephemeral TCP port")
+    }
+
+    const ticket = jwt.sign(
+      {
+        sub: "user-1",
+        username: "lars",
+        scope: "realtime",
+        channel: "dm-1",
+        aud: REALTIME_TICKET_AUDIENCE,
+        iss: REALTIME_TICKET_ISSUER,
+      },
+      "test-secret",
+      { expiresIn: "2m" },
+    )
+    const ws = new WebSocket(`ws://127.0.0.1:${address.port}/ws?ticket=${ticket}`)
+
+    await waitForOpen(ws)
+
+    const subscribed = waitForMessage(ws)
+    ws.send(JSON.stringify({ type: "subscribe" }))
+    await expect(subscribed).resolves.toBe(JSON.stringify({ type: "subscribed", channel: "dm-1" }))
+
+    const subscribedHealth = await fetch(`http://127.0.0.1:${address.port}/health`)
+    await expect(subscribedHealth.json()).resolves.toMatchObject({ ok: true, channels: 1 })
+
+    const unsubscribed = waitForMessage(ws)
+    ws.send(JSON.stringify({ type: "unsubscribe" }))
+    await expect(unsubscribed).resolves.toBe(JSON.stringify({ type: "unsubscribed", channel: "dm-1" }))
+
+    const lingeringHealth = await fetch(`http://127.0.0.1:${address.port}/health`)
+    await expect(lingeringHealth.json()).resolves.toMatchObject({ ok: true, channels: 1 })
+
+    await vi.waitFor(async () => {
+      const expiredHealth = await fetch(`http://127.0.0.1:${address.port}/health`)
+      expect(await expiredHealth.json()).toMatchObject({ ok: true, channels: 0 })
+    }, { timeout: 500 })
 
     ws.close()
     await service.shutdown("test")

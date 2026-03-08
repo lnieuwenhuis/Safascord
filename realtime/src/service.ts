@@ -36,8 +36,17 @@ export type RealtimeServiceOptions = {
 }
 
 export const DEFAULT_JWT_SECRET = "dev_change_me"
+export const MIN_JWT_SECRET_LENGTH = 32
 export const REALTIME_TICKET_AUDIENCE = "realtime"
 export const REALTIME_TICKET_ISSUER = "api"
+
+export function readJwtSecret(value = process.env.JWT_SECRET || DEFAULT_JWT_SECRET) {
+  return value.trim()
+}
+
+export function isStrongJwtSecret(secret: string) {
+  return secret !== DEFAULT_JWT_SECRET && secret.length >= MIN_JWT_SECRET_LENGTH
+}
 
 export function readAllowedOrigins(value = process.env.WS_ALLOWED_ORIGINS || "") {
   return value
@@ -52,8 +61,10 @@ export function isProductionLike() {
 }
 
 export function assertRealtimeRuntimeConfig(jwtSecret: string) {
-  if (isProductionLike() && jwtSecret === DEFAULT_JWT_SECRET) {
-    throw new Error("JWT_SECRET must be set to a strong value in production-like environments")
+  if (isProductionLike() && !isStrongJwtSecret(jwtSecret)) {
+    throw new Error(
+      `JWT_SECRET must be set to a strong value with at least ${MIN_JWT_SECRET_LENGTH} characters in production-like environments`,
+    )
   }
 }
 
@@ -131,6 +142,8 @@ export function createRealtimeService({
     const existing = lingerTimers.get(channel)
     if (existing) clearTimeout(existing)
     const timer = setTimeout(() => {
+      const set = subs.get(channel)
+      if (set && set.size === 0) subs.delete(channel)
       lingerUntil.delete(channel)
       lingerTimers.delete(channel)
     }, lingerMs)

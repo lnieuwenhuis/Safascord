@@ -3,11 +3,16 @@ import jwt from "jsonwebtoken"
 import { pool } from "./db.js"
 
 const DEFAULT_JWT_SECRET = "dev_change_me"
+const MIN_JWT_SECRET_LENGTH = 32
 const REALTIME_TICKET_AUDIENCE = "realtime"
 const REALTIME_TICKET_ISSUER = "api"
 
 export function readJwtSecret() {
   return (process.env.JWT_SECRET || DEFAULT_JWT_SECRET).trim()
+}
+
+export function isStrongJwtSecret(secret: string) {
+  return secret !== DEFAULT_JWT_SECRET && secret.length >= MIN_JWT_SECRET_LENGTH
 }
 
 export const JWT_SECRET = readJwtSecret()
@@ -39,8 +44,10 @@ export function isProductionLike() {
 export function assertSecureRuntimeConfig() {
   if (!isProductionLike()) return
 
-  if (readJwtSecret() === DEFAULT_JWT_SECRET) {
-    throw new Error("JWT_SECRET must be set to a strong value in production-like environments")
+  if (!isStrongJwtSecret(readJwtSecret())) {
+    throw new Error(
+      `JWT_SECRET must be set to a strong value with at least ${MIN_JWT_SECRET_LENGTH} characters in production-like environments`,
+    )
   }
 
   if (readCsvEnv("CORS_ORIGINS").length === 0) {

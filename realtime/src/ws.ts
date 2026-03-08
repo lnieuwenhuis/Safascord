@@ -1,7 +1,7 @@
 import Redis, { Cluster } from "ioredis"
 import {
-  DEFAULT_JWT_SECRET,
   createRealtimeService,
+  readJwtSecret,
   readAllowedOrigins,
 } from "./service.js"
 
@@ -22,7 +22,7 @@ function createRedisClients() {
   return { sub, pub }
 }
 
-const jwtSecret = (process.env.JWT_SECRET || DEFAULT_JWT_SECRET).trim()
+const jwtSecret = readJwtSecret()
 const { sub, pub } = createRedisClients()
 const service = createRealtimeService({
   port: Number(process.env.PORT || 4001),

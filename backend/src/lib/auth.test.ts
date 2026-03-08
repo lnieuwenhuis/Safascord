@@ -32,7 +32,13 @@ describe("auth helpers", () => {
 
     expect(() => auth.assertSecureRuntimeConfig()).toThrow(/JWT_SECRET/)
 
-    process.env.JWT_SECRET = "super-secret"
+    process.env.JWT_SECRET = "                                "
+    expect(() => auth.assertSecureRuntimeConfig()).toThrow(/JWT_SECRET/)
+
+    process.env.JWT_SECRET = "too-short-for-production"
+    expect(() => auth.assertSecureRuntimeConfig()).toThrow(/JWT_SECRET/)
+
+    process.env.JWT_SECRET = "12345678901234567890123456789012"
     process.env.CORS_ORIGINS = ""
     expect(() => auth.assertSecureRuntimeConfig()).toThrow(/CORS_ORIGINS/)
 
