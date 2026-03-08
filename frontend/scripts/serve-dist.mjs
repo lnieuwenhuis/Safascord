@@ -2,6 +2,7 @@ import http from "node:http"
 import { createReadStream, existsSync } from "node:fs"
 import { stat } from "node:fs/promises"
 import path from "node:path"
+import { pipeline } from "node:stream/promises"
 import { fileURLToPath } from "node:url"
 
 const __filename = fileURLToPath(import.meta.url)
@@ -28,16 +29,28 @@ const contentTypes = new Map([
   [".woff2", "font/woff2"],
 ])
 
-function sendFile(res, filePath) {
+async function sendFile(res, filePath) {
   const ext = path.extname(filePath).toLowerCase()
   const isHtml = ext === ".html"
 
-  res.writeHead(200, {
-    "Content-Type": contentTypes.get(ext) || "application/octet-stream",
-    "Cache-Control": isHtml ? "no-cache" : "public, max-age=31536000, immutable",
-  })
+  res.statusCode = 200
+  res.setHeader("Content-Type", contentTypes.get(ext) || "application/octet-stream")
+  res.setHeader(
+    "Cache-Control",
+    isHtml ? "no-cache" : "public, max-age=31536000, immutable",
+  )
 
-  createReadStream(filePath).pipe(res)
+  try {
+    await pipeline(createReadStream(filePath), res)
+  } catch (error) {
+    if (!res.headersSent) {
+      res.writeHead(500, { "Content-Type": "text/plain; charset=utf-8" })
+      res.end("Internal server error")
+      return
+    }
+
+    res.destroy(error)
+  }
 }
 
 function resolveDistPath(requestPathname) {
@@ -79,20 +92,25 @@ const server = http.createServer(async (req, res) => {
     }
 
     if (existsSync(filePath) && (await stat(filePath)).isFile()) {
-      sendFile(res, filePath)
+      await sendFile(res, filePath)
       return
     }
 
     if (existsSync(indexPath)) {
-      sendFile(res, indexPath)
+      await sendFile(res, indexPath)
       return
     }
 
     res.writeHead(404, { "Content-Type": "text/plain; charset=utf-8" })
     res.end("Not found")
   } catch (error) {
-    res.writeHead(500, { "Content-Type": "text/plain; charset=utf-8" })
-    res.end("Internal server error")
+    if (!res.headersSent) {
+      res.writeHead(500, { "Content-Type": "text/plain; charset=utf-8" })
+      res.end("Internal server error")
+      return
+    }
+
+    res.destroy(error)
   }
 })
 
