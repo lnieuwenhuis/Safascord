@@ -41,15 +41,19 @@ jobs:
           PRODUCTION_REALTIME_URL: ${{ vars.PRODUCTION_REALTIME_URL }}
         run: |
           if [[ "$BRANCH_NAME" == "staging" ]]; then
-            echo "environment=staging" >> "$GITHUB_OUTPUT"
-            echo "frontend_url=$STAGING_FRONTEND_URL" >> "$GITHUB_OUTPUT"
-            echo "api_url=$STAGING_API_URL" >> "$GITHUB_OUTPUT"
-            echo "realtime_url=$STAGING_REALTIME_URL" >> "$GITHUB_OUTPUT"
+            {
+              echo "environment=staging"
+              echo "frontend_url=$STAGING_FRONTEND_URL"
+              echo "api_url=$STAGING_API_URL"
+              echo "realtime_url=$STAGING_REALTIME_URL"
+            } >> "$GITHUB_OUTPUT"
           else
-            echo "environment=production" >> "$GITHUB_OUTPUT"
-            echo "frontend_url=$PRODUCTION_FRONTEND_URL" >> "$GITHUB_OUTPUT"
-            echo "api_url=$PRODUCTION_API_URL" >> "$GITHUB_OUTPUT"
-            echo "realtime_url=$PRODUCTION_REALTIME_URL" >> "$GITHUB_OUTPUT"
+            {
+              echo "environment=production"
+              echo "frontend_url=$PRODUCTION_FRONTEND_URL"
+              echo "api_url=$PRODUCTION_API_URL"
+              echo "realtime_url=$PRODUCTION_REALTIME_URL"
+            } >> "$GITHUB_OUTPUT"
           fi
 
       - name: Skip when deploy URLs are not configured
