@@ -32,7 +32,7 @@ const LOAD_MORE_COOLDOWN_MS = 350
 type AttachmentMode = "image" | "video" | "file"
 
 function detectAttachmentMode(url: string): AttachmentMode {
-  if (/\.(png|jpe?g|gif|webp|avif|bmp|svg)(\?|$)/i.test(url)) return "image"
+  if (/\.(png|jpe?g|gif|webp|avif|bmp)(\?|$)/i.test(url)) return "image"
   if (/\.(mp4|webm|mov|m4v|ogg|ogv)(\?|$)/i.test(url)) return "video"
   return "file"
 }
@@ -116,6 +116,7 @@ export default function ChatPanel({ variant, channelName, channelId, guildName, 
   const [typing, setTyping] = useState<Set<string>>(new Set())
   const listRef = useRef<HTMLDivElement | null>(null)
   const wsRef = useRef<WebSocket | null>(null)
+  const socketChannelRef = useRef<string | null>(null)
   const idleRef = useRef<number | null>(null)
   const [hasMore, setHasMore] = useState(true)
   const [loadingInitial, setLoadingInitial] = useState(true)
@@ -277,10 +278,10 @@ export default function ChatPanel({ variant, channelName, channelId, guildName, 
 
     const ws = wsRef.current
     if (ws && ws.readyState === WebSocket.OPEN) {
-      ws.send(JSON.stringify({ type: "typing.start", channel: channelKey, user: display, userId: user?.id }))
+      ws.send(JSON.stringify({ type: "typing.start", channel: socketChannelRef.current || channelKey }))
       if (idleRef.current) clearTimeout(idleRef.current)
       idleRef.current = setTimeout(() => {
-        ws.send(JSON.stringify({ type: "typing.stop", channel: channelKey, user: display, userId: user?.id }))
+        ws.send(JSON.stringify({ type: "typing.stop", channel: socketChannelRef.current || channelKey }))
         idleRef.current = null
       }, 1200)
     }
@@ -530,7 +531,11 @@ export default function ChatPanel({ variant, channelName, channelId, guildName, 
 
     const connect = async () => {
       try {
-        const info = await api.socketInfo(channelKey)
+        if (!token) {
+          scheduleReconnect()
+          return
+        }
+        const info = await api.socketInfo(token, channelKey, guildId || undefined)
         if (cancelled) return
 
         const ws = new WebSocket(info.wsUrl)
@@ -538,7 +543,8 @@ export default function ChatPanel({ variant, channelName, channelId, guildName, 
 
         ws.onopen = () => {
           reconnectAttemptsRef.current = 0
-          ws.send(JSON.stringify({ type: "subscribe", channel: channelKey }))
+          socketChannelRef.current = info.channel
+          ws.send(JSON.stringify({ type: "subscribe", channel: info.channel }))
         }
 
         ws.onmessage = (ev) => {
@@ -556,7 +562,7 @@ export default function ChatPanel({ variant, channelName, channelId, guildName, 
             roleColor?: string
           }
 
-          const sameChannel = d.channel === channelKey || d.channel === channelName
+          const sameChannel = d.channel === socketChannelRef.current || d.channel === channelKey || d.channel === channelName
 
           if (d.type === "typing" && sameChannel && d.user) {
             if (user?.id && d.userId === user.id) return
@@ -634,6 +640,7 @@ export default function ChatPanel({ variant, channelName, channelId, guildName, 
 
         ws.onclose = () => {
           if (wsRef.current === ws) wsRef.current = null
+          if (socketChannelRef.current === info.channel) socketChannelRef.current = null
           scheduleReconnect()
         }
       } catch {
@@ -652,13 +659,14 @@ export default function ChatPanel({ variant, channelName, channelId, guildName, 
       if (!cur) return
       try {
         if (cur.readyState === WebSocket.OPEN) {
-          cur.send(JSON.stringify({ type: "unsubscribe", channel: channelKey }))
+          cur.send(JSON.stringify({ type: "unsubscribe", channel: socketChannelRef.current || channelKey }))
         }
       } catch (e) { console.error(e) }
       try { cur.close() } catch (e) { console.error(e) }
       wsRef.current = null
+      socketChannelRef.current = null
     }
-  }, [channelKey, channelName, isNearBottom, myRoleColor, scrollToBottom, user?.id, variant])
+  }, [channelKey, channelName, guildId, isNearBottom, myRoleColor, scrollToBottom, token, user?.id, variant])
 
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
@@ -695,10 +703,10 @@ export default function ChatPanel({ variant, channelName, channelId, guildName, 
     if (!t && !selectedFile) return
     setText("")
     // stop typing immediately when sending
-    const ws = wsRef.current
-    try {
-      if (ws && ws.readyState === WebSocket.OPEN) {
-        ws.send(JSON.stringify({ type: "typing.stop", channel: channelKey, user: display, userId: user?.id }))
+      const ws = wsRef.current
+      try {
+        if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ type: "typing.stop", channel: socketChannelRef.current || channelKey }))
       }
     } catch (e) { console.error(e) }
     

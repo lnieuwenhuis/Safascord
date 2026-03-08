@@ -77,6 +77,23 @@ You still need PostgreSQL, Redis, and S3-compatible storage available.
 - Single-service setup guide: `DEPLOY_SINGLE_SERVER.md`
 - Scaling/multi-service notes: `DEPLOY_MULTI_SERVER.md`
 - Rebuild/redeploy checklist: `REBUILD_INSTRUCTIONS.md`
+- CI/CD and GitHub automation guide: `CI_CD.md`
+
+## Quality Automation
+
+Install all Node service dependencies:
+
+```bash
+npm run install:all
+```
+
+Run the full local CI-equivalent suite:
+
+```bash
+npm run ci
+```
+
+AI pull request review is handled by the installed Qodo GitHub app, with repo-specific guidance in `.pr_agent.toml`.
 
 ## Notes
 

@@ -41,10 +41,8 @@ nyc_output/
 *.p12
 *.sqlite
 *.db
-package-lock.json
 yarn.lock
 pnpm-lock.yaml
-frontend/package-lock.json
 backend/bun.lock
 *.lock
 !rust-backend/Cargo.lock

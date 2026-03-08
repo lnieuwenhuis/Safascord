@@ -1,7 +1,7 @@
 import { FastifyInstance, FastifyRequest } from "fastify"
 import jwt from "jsonwebtoken"
 import { pool } from "../lib/db.js"
-import { JWT_SECRET, checkPermission } from "../lib/auth.js"
+import { JWT_SECRET, checkPermission, getChannelAccess, getRequestUser, isServerMember } from "../lib/auth.js"
 
 export async function channelRoutes(app: FastifyInstance) {
   app.get("/api/dms", async (req) => {
@@ -82,10 +82,29 @@ export async function channelRoutes(app: FastifyInstance) {
          return { error: "User does not accept DMs" }
       }
       
-      // Create DM
       const client = await pool.connect()
       try {
         await client.query('BEGIN')
+
+        const [id1, id2] = [String(payload.sub), String(userId)].sort()
+        await client.query(`SELECT pg_advisory_xact_lock(hashtext($1), hashtext($2))`, [id1, id2])
+
+        const existing = await client.query(
+          `SELECT c.id
+           FROM channels c
+           JOIN channel_members cm1 ON c.id = cm1.channel_id
+           JOIN channel_members cm2 ON c.id = cm2.channel_id
+           WHERE c.type = 'dm'
+             AND cm1.user_id = $1::uuid
+             AND cm2.user_id = $2::uuid
+           LIMIT 1`,
+          [payload.sub, userId],
+        )
+        if (existing.rowCount && existing.rowCount > 0) {
+          await client.query('COMMIT')
+          return { id: existing.rows[0].id }
+        }
+
         const c = await client.query(`INSERT INTO channels (type, name) VALUES ('dm', 'dm') RETURNING id`, [])
         const cid = c.rows[0].id
         await client.query(`INSERT INTO channel_members (channel_id, user_id) VALUES ($1, $2), ($1, $3)`, [cid, payload.sub, userId])
@@ -195,11 +214,17 @@ export async function channelRoutes(app: FastifyInstance) {
   })
 
   app.get("/api/channels/:id/permissions", async (req) => {
-    const auth = (req.headers as any).authorization as string | undefined
+    const user = getRequestUser(req)
     const id = (req.params as any).id as string
-    if (!auth || !id) return { error: "Bad request" }
+    if (!user || !id) return { error: "Bad request" }
     try {
-      jwt.verify(auth.replace(/^Bearer\s+/i, ""), JWT_SECRET)
+      const channel = await pool.query(`SELECT server_id::text AS "serverId", type FROM channels WHERE id=$1::uuid LIMIT 1`, [id])
+      const row = channel.rows[0] as { serverId: string | null; type: string } | undefined
+      if (!row || row.type === "dm" || !row.serverId) return { error: "Not found" }
+
+      const allowed = await checkPermission(user.sub, row.serverId, 'can_manage_channels')
+      if (!allowed) return { error: "Forbidden" }
+
       const r = await pool.query(
         `SELECT role_id::text AS "roleId", can_view AS "canView", can_send_messages AS "canSendMessages"
          FROM channel_permissions WHERE channel_id=$1::uuid`,
@@ -230,17 +255,17 @@ export async function channelRoutes(app: FastifyInstance) {
   })
 
   app.get("/api/channels", async (req: FastifyRequest<{ Querystring: { serverId?: string } }>) => {
-    const auth = (req.headers as any).authorization as string | undefined
+    const user = getRequestUser(req)
     try {
       const serverId = req.query.serverId || null
-      let userId: string | null = null
+      if (!user || !serverId) return { sections: [] }
+      const userId = user.sub
 
-      if (auth) {
-        try {
-          const payload = jwt.verify(auth.replace(/^Bearer\s+/i, ""), JWT_SECRET) as any
-          userId = payload.sub
-        } catch {}
-      }
+      const member = await pool.query(
+        `SELECT 1 FROM server_members WHERE server_id = $1::uuid AND user_id = $2::uuid LIMIT 1`,
+        [serverId, userId]
+      )
+      if (!member.rowCount) return { sections: [] }
 
       const [channelRows, cats] = await Promise.all([
         pool.query(
@@ -266,12 +291,6 @@ export async function channelRoutes(app: FastifyInstance) {
       }))
 
       if (serverId && userId) {
-        const member = await pool.query(
-          `SELECT 1 FROM server_members WHERE server_id = $1::uuid AND user_id = $2::uuid LIMIT 1`,
-          [serverId, userId]
-        )
-        if (!member.rowCount) return { sections: [] }
-
         const [ownerRow, roleRows] = await Promise.all([
           pool.query(`SELECT owner_id::text AS owner_id FROM servers WHERE id = $1::uuid LIMIT 1`, [serverId]),
           pool.query(
@@ -378,15 +397,20 @@ export async function channelRoutes(app: FastifyInstance) {
 
   app.get("/api/channel-by-name", async (req: FastifyRequest<{ Querystring: { serverId?: string; name?: string } }>) => {
     try {
+      const user = getRequestUser(req)
       const serverId = req.query.serverId
       const name = req.query.name
-      if (!serverId || !name) return { error: "Bad request" }
+      if (!user || !serverId || !name) return { error: "Bad request" }
+      const member = await isServerMember(user.sub, serverId)
+      if (!member) return { error: "Forbidden" }
       const r = await pool.query(
         `SELECT id::text AS id FROM channels WHERE server_id=$1::uuid AND name=$2::text LIMIT 1`,
         [serverId, name]
       )
       const id = r.rows[0]?.id as string | undefined
       if (!id) return { error: "Not found" }
+      const access = await getChannelAccess(user.sub, id)
+      if (!access?.allowed) return { error: "Forbidden" }
       return { id }
     } catch {
       return { error: "Server error" }

@@ -1,0 +1,30 @@
+[config]
+publish_output = true
+publish_output_progress = false
+final_update_message = false
+
+[pr_reviewer]
+require_score_review = true
+require_tests_review = true
+require_estimate_effort_to_review = true
+extra_instructions = """
+Review this repository like a senior engineer shipping a production SaaS product.
+
+Focus on:
+- correctness, regressions, and edge cases
+- security, auth, secrets, and trust boundaries
+- deploy and runtime risks across frontend, backend, and realtime
+- missing tests for changed behavior
+- maintainability issues that matter for active team ownership
+
+Prefer concise, actionable comments tied to concrete behavior.
+Avoid style-only nitpicks and anything already covered by linters or typechecking.
+"""
+
+[pr_description]
+publish_description_as_comment = false
+publish_labels = false
+
+[pr_code_suggestions]
+num_code_suggestions = 4
+commitable_code_suggestions = false

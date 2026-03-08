@@ -1,7 +1,21 @@
 import { FastifyInstance } from "fastify"
 import jwt from "jsonwebtoken"
 import { pool } from "../lib/db.js"
-import { JWT_SECRET } from "../lib/auth.js"
+import { JWT_SECRET, getRequestUser, isServerMember } from "../lib/auth.js"
+
+const VALID_USER_STATUSES = new Set(["online", "away", "busy", "offline"])
+
+function isSafeProfileUrl(value: unknown) {
+  if (value == null || value === "") return true
+  if (typeof value !== "string") return false
+  if (value.startsWith("/api/uploads/")) return true
+  try {
+    const parsed = new URL(value)
+    return parsed.protocol === "http:" || parsed.protocol === "https:"
+  } catch {
+    return false
+  }
+}
 
 export async function userRoutes(app: FastifyInstance) {
   app.get("/api/me", async (req) => {
@@ -114,6 +128,25 @@ export async function userRoutes(app: FastifyInstance) {
     }
 
     try {
+      if (username !== undefined && (typeof username !== "string" || username.length < 2 || username.length > 32 || !/^[a-zA-Z0-9_]+$/.test(username))) {
+        return { error: "Invalid username" }
+      }
+      if (displayName !== undefined && (typeof displayName !== "string" || displayName.length > 64)) {
+        return { error: "Invalid display name" }
+      }
+      if (bio !== undefined && (typeof bio !== "string" || bio.length > 500)) {
+        return { error: "Invalid bio" }
+      }
+      if (status !== undefined && !VALID_USER_STATUSES.has(String(status))) {
+        return { error: "Invalid status" }
+      }
+      if (customBackgroundOpacity !== undefined && (typeof customBackgroundOpacity !== "number" || customBackgroundOpacity < 0 || customBackgroundOpacity > 1)) {
+        return { error: "Invalid background opacity" }
+      }
+      if (!isSafeProfileUrl(bannerUrl) || !isSafeProfileUrl(avatarUrl) || !isSafeProfileUrl(customBackgroundUrl)) {
+        return { error: "Invalid profile asset URL" }
+      }
+
       if (username) {
         const check = await pool.query("SELECT 1 FROM users WHERE username=$1 AND id!=$2::uuid LIMIT 1", [username, payload.sub])
         if (check.rowCount && check.rowCount > 0) return { error: "Username taken" }
@@ -189,7 +222,11 @@ export async function userRoutes(app: FastifyInstance) {
   
   app.get("/api/users", async (req: any) => {
       try {
+        const user = getRequestUser(req)
         const serverId = req.query.serverId
+        if (!user || !serverId) return { groups: [] }
+        const member = await isServerMember(user.sub, serverId)
+        if (!member) return { groups: [] }
         const r = await pool.query(
           `WITH user_primary_role AS (
              SELECT 
@@ -234,7 +271,7 @@ export async function userRoutes(app: FastifyInstance) {
            JOIN users ON users.id = upr.user_id
            GROUP BY COALESCE(upr.display_group, 'Users')
            ORDER BY min_pos ASC, title`,
-          [serverId || null]
+          [serverId]
         )
         const groups = r.rows as { title: string; users: { username: string; displayName: string; avatarUrl: string; status: string }[] }[]
         return { groups }
