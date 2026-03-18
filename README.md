@@ -97,5 +97,5 @@ AI pull request review is handled by the installed Qodo GitHub app, with repo-sp
 
 ## Notes
 
-- The repo keeps service-specific lockfiles (`bun.lock`) for Docker/Bun-based dev images.
+- The repo keeps committed service-specific lockfiles (`bun.lock`) for Docker/Bun-based dev images; when a service `package.json` changes, regenerate and commit that service's `bun.lock`.
 - Frontend runtime config lives in `frontend/.env.example`.

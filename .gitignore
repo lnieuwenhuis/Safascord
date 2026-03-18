@@ -45,6 +45,8 @@ yarn.lock
 pnpm-lock.yaml
 backend/bun.lock
 *.lock
+!package-lock.json
+!frontend/package-lock.json
 !rust-backend/Cargo.lock
 target/
 rust-backend/target/
