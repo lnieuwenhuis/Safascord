@@ -10,7 +10,7 @@
     "dev": "vite",
     "build": "vite build",
     "typecheck": "tsc -b",
-    "build:verify": "npm run typecheck && npm run build",
+    "build:verify": "bun run typecheck && bun run build",
     "lint": "eslint .",
     "lint:ci": "eslint . --max-warnings=0",
     "test": "vitest",
