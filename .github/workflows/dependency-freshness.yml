@@ -1,0 +1,54 @@
+name: Dependency Freshness
+
+on:
+  schedule:
+    - cron: "0 6 * * 1"
+  workflow_dispatch:
+
+concurrency:
+  group: dependency-freshness-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  verify-fresh-dependencies:
+    name: Fresh Deps
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - service: frontend
+            verify: bun run lint:ci && bun run test:coverage && bun run build:verify
+            database_url: ""
+          - service: backend
+            verify: bun run test:coverage && bun run build:verify
+            database_url: postgresql://postgres:postgres@127.0.0.1:5432/safascord_test
+          - service: realtime
+            verify: bun run test:coverage && bun run build:verify
+            database_url: ""
+    defaults:
+      run:
+        working-directory: ${{ matrix.service }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.10
+
+      - name: Install fresh dependencies
+        run: |
+          rm -f bun.lock
+          rm -rf node_modules
+          bun install
+
+      - name: Verify with fresh dependency resolution
+        env:
+          DATABASE_URL: ${{ matrix.database_url }}
+        run: ${{ matrix.verify }}
