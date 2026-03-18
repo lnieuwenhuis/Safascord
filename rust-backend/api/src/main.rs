@@ -15,15 +15,15 @@ use axum::routing::{delete, get, patch, post};
 use axum::{Json, Router};
 use bcrypt::{hash, verify};
 use chrono::{Duration, Utc};
+use jsonwebtoken::jwk::Jwk;
 use rand::Rng;
 use regex::Regex;
-use safascord_core::auth::{authorize_header, sign_token, AuthClaims};
+use safascord_core::auth::{authorize_header, ensure_jwt_crypto_provider, sign_token, AuthClaims};
 use safascord_core::config::AppConfig;
 use safascord_core::util::{random_string, to_safe_username};
 use safascord_core::{AppState, SharedState};
 use serde::Deserialize;
 use serde_json::{json, Value};
-use jsonwebtoken::jwk::Jwk;
 use sqlx::{postgres::PgRow, PgPool, Row};
 use tokio::fs;
 use tower_http::cors::{Any, CorsLayer};
@@ -39,6 +39,8 @@ async fn main() -> Result<()> {
                 .unwrap_or_else(|_| "safascord_api=info,tower_http=info".into()),
         )
         .init();
+
+    ensure_jwt_crypto_provider();
 
     let config = AppConfig::from_env(4000)?;
     let state = Arc::new(AppState::from_config(config.clone()).await?);
@@ -609,6 +611,7 @@ async fn verify_shoo_id_token(
     id_token: &str,
     origin_hint: Option<&str>,
 ) -> Result<ShooClaims> {
+    ensure_jwt_crypto_provider();
     let header = jsonwebtoken::decode_header(id_token)?;
     let kid = header.kid.ok_or_else(|| anyhow!("Missing kid"))?;
     let jwks = state
