@@ -103,7 +103,13 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
 
     const connect = async () => {
       try {
-        const info = await api.socketInfo(userChannel)
+        const authToken = token || localStorage.getItem("token") || ""
+        if (!authToken) {
+          scheduleReconnect()
+          return
+        }
+
+        const info = await api.socketInfo(authToken, userChannel)
         if (cancelled) return
 
         const ws = new WebSocket(info.wsUrl)
@@ -112,7 +118,7 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
         ws.onopen = () => {
           retryAttemptRef.current = 0
           socketConnectedRef.current = true
-          ws.send(JSON.stringify({ type: "subscribe", channel: userChannel }))
+          ws.send(JSON.stringify({ type: "subscribe", channel: info.channel }))
         }
 
         ws.onmessage = (ev) => {
@@ -159,7 +165,7 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
       if (wsRef.current) wsRef.current.close()
       socketConnectedRef.current = false
     }
-  }, [isAuthenticated, user])
+  }, [isAuthenticated, token, user])
 
   // If websocket delivery is unavailable, keep notifications fresh without requiring reload.
   useEffect(() => {

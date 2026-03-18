@@ -15,7 +15,6 @@ function getConfiguredPassword() {
   return (
     (import.meta.env.VITE_STAGING_GUARD_PASSWORD as string | undefined) ||
     (import.meta.env.VITE_STAGING_PASSWORD as string | undefined) ||
-    (import.meta.env.VITE_ADMIN_PASSWORD as string | undefined) ||
     ""
   ).trim()
 }

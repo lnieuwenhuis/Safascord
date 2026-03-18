@@ -1,7 +1,106 @@
 import { FastifyInstance } from "fastify"
 import jwt from "jsonwebtoken"
 import { pool } from "../lib/db.js"
-import { JWT_SECRET, checkPermission } from "../lib/auth.js"
+import { JWT_SECRET, checkPermission, getRequestUser, isServerMember } from "../lib/auth.js"
+
+type RoleManagementContext = {
+  ownerId: string
+  isOwner: boolean
+  isMember: boolean
+  canManageRoles: boolean
+  canManageServer: boolean
+  canManageChannels: boolean
+  highestRolePosition: number | null
+}
+
+type ServerRoleRow = {
+  id: string
+  name: string
+  position: number
+  can_manage_channels: boolean
+  can_manage_server: boolean
+  can_manage_roles: boolean
+}
+
+async function getRoleManagementContext(serverId: string, userId: string): Promise<RoleManagementContext | null> {
+  const server = await pool.query(`SELECT owner_id::text AS owner_id FROM servers WHERE id = $1::uuid LIMIT 1`, [serverId])
+  const ownerId = String(server.rows[0]?.owner_id || "")
+  if (!ownerId) return null
+
+  const member = await isServerMember(userId, serverId)
+  const isOwner = ownerId === userId
+
+  const summary = await pool.query(
+    `SELECT COALESCE(bool_or(r.can_manage_roles), FALSE) AS can_manage_roles,
+            COALESCE(bool_or(r.can_manage_server), FALSE) AS can_manage_server,
+            COALESCE(bool_or(r.can_manage_channels), FALSE) AS can_manage_channels,
+            MIN(r.position) AS highest_role_position
+     FROM server_member_roles smr
+     JOIN roles r ON r.id = smr.role_id
+     WHERE smr.server_id = $1::uuid
+       AND smr.user_id = $2::uuid`,
+    [serverId, userId],
+  )
+
+  const row = summary.rows[0] as {
+    can_manage_roles: boolean
+    can_manage_server: boolean
+    can_manage_channels: boolean
+    highest_role_position: number | null
+  }
+
+  return {
+    ownerId,
+    isOwner,
+    isMember: member,
+    canManageRoles: !!row?.can_manage_roles,
+    canManageServer: !!row?.can_manage_server,
+    canManageChannels: !!row?.can_manage_channels,
+    highestRolePosition: row?.highest_role_position == null ? null : Number(row.highest_role_position),
+  }
+}
+
+function canManageRolePosition(context: RoleManagementContext, position: number) {
+  if (context.isOwner) return true
+  if (context.highestRolePosition == null) return false
+  return position > context.highestRolePosition
+}
+
+function canGrantRequestedPermissions(
+  context: RoleManagementContext,
+  requested: { canManageChannels?: boolean; canManageServer?: boolean; canManageRoles?: boolean },
+) {
+  if (context.isOwner) return true
+  if (requested.canManageChannels && !context.canManageChannels) return false
+  if (requested.canManageServer && !context.canManageServer) return false
+  if (requested.canManageRoles && !context.canManageRoles) return false
+  return true
+}
+
+async function getServerRoles(serverId: string, roleIds: string[]) {
+  if (roleIds.length === 0) return []
+  const result = await pool.query(
+    `SELECT id::text AS id, name, position, can_manage_channels, can_manage_server, can_manage_roles
+     FROM roles
+     WHERE server_id = $1::uuid
+       AND id = ANY($2::uuid[])`,
+    [serverId, roleIds],
+  )
+  return result.rows as ServerRoleRow[]
+}
+
+async function getMemberHighestRolePosition(serverId: string, userId: string) {
+  const result = await pool.query(
+    `SELECT MIN(r.position) AS highest_role_position
+     FROM server_member_roles smr
+     JOIN roles r ON r.id = smr.role_id
+     WHERE smr.server_id = $1::uuid
+       AND smr.user_id = $2::uuid`,
+    [serverId, userId],
+  )
+  const value = result.rows[0]?.highest_role_position
+  return value == null ? null : Number(value)
+}
 
 export async function serverRoutes(app: FastifyInstance) {
   app.get("/api/servers", async (req) => {
@@ -239,46 +338,63 @@ export async function serverRoutes(app: FastifyInstance) {
      
      try {
        const payload = jwt.verify(auth.replace(/^Bearer\s+/i, ""), JWT_SECRET) as any
-       
-       // Fetch invite
-       const r = await pool.query(
-         `SELECT i.*, s.name as server_name 
-          FROM invites i
-          JOIN servers s ON s.id = i.server_id
-          WHERE i.code = $1`, 
-         [code]
-       )
-       if (!r.rowCount) return { error: "Invite not found" }
-       const invite = r.rows[0]
-       
-       if (invite.expires_at && new Date(invite.expires_at) < new Date()) {
-          return { error: "Invite expired" }
+       const client = await pool.connect()
+       try {
+         await client.query("BEGIN")
+
+         const r = await client.query(
+           `SELECT i.*, s.name as server_name
+            FROM invites i
+            JOIN servers s ON s.id = i.server_id
+            WHERE i.code = $1
+            FOR UPDATE`,
+           [code],
+         )
+         if (!r.rowCount) {
+           await client.query("ROLLBACK")
+           return { error: "Invite not found" }
+         }
+         const invite = r.rows[0]
+
+         if (invite.expires_at && new Date(invite.expires_at) < new Date()) {
+           await client.query("ROLLBACK")
+           return { error: "Invite expired" }
+         }
+         if (invite.max_uses && invite.uses >= invite.max_uses) {
+           await client.query("ROLLBACK")
+           return { error: "Invite max uses reached" }
+         }
+
+         const banned = await client.query(`SELECT 1 FROM server_bans WHERE server_id=$1::uuid AND user_id=$2::uuid`, [invite.server_id, payload.sub])
+         if (banned.rowCount) {
+           await client.query("ROLLBACK")
+           return { error: "You are banned from this server" }
+         }
+
+         const existing = await client.query(`SELECT 1 FROM server_members WHERE server_id=$1::uuid AND user_id=$2::uuid`, [invite.server_id, payload.sub])
+         if (existing.rowCount) {
+           await client.query("COMMIT")
+           return { success: true, serverId: invite.server_id }
+         }
+
+         const role = await client.query(`SELECT id FROM roles WHERE server_id=$1::uuid AND name='Member' LIMIT 1`, [invite.server_id])
+         let roleId = role.rows[0]?.id
+         if (!roleId) {
+           const anyRole = await client.query(`SELECT id FROM roles WHERE server_id=$1::uuid ORDER BY position DESC LIMIT 1`, [invite.server_id])
+           roleId = anyRole.rows[0]?.id
+         }
+
+         await client.query(`INSERT INTO server_members (server_id, user_id, role_id) VALUES ($1::uuid, $2::uuid, $3::uuid)`, [invite.server_id, payload.sub, roleId])
+         await client.query(`INSERT INTO server_member_roles (server_id, user_id, role_id) VALUES ($1::uuid, $2::uuid, $3::uuid) ON CONFLICT DO NOTHING`, [invite.server_id, payload.sub, roleId])
+         await client.query(`UPDATE invites SET uses = uses + 1 WHERE code=$1`, [code])
+         await client.query("COMMIT")
+         return { success: true, serverId: invite.server_id }
+       } catch (error) {
+         await client.query("ROLLBACK")
+         throw error
+       } finally {
+         client.release()
        }
-       if (invite.max_uses && invite.uses >= invite.max_uses) {
-          return { error: "Invite max uses reached" }
-       }
-       
-       // Check if banned
-       const banned = await pool.query(`SELECT 1 FROM server_bans WHERE server_id=$1::uuid AND user_id=$2::uuid`, [invite.server_id, payload.sub])
-       if (banned.rowCount) return { error: "You are banned from this server" }
-       
-       // Add member
-       // Default role is 'Member' or position 1?
-       const role = await pool.query(`SELECT id FROM roles WHERE server_id=$1::uuid AND name='Member' LIMIT 1`, [invite.server_id])
-       let roleId = role.rows[0]?.id
-       if (!roleId) {
-          // Fallback to any lowest role
-          const anyRole = await pool.query(`SELECT id FROM roles WHERE server_id=$1::uuid ORDER BY position DESC LIMIT 1`, [invite.server_id])
-          roleId = anyRole.rows[0]?.id
-       }
-       
-       await pool.query(`INSERT INTO server_members (server_id, user_id, role_id) VALUES ($1::uuid, $2::uuid, $3::uuid) ON CONFLICT DO NOTHING`, [invite.server_id, payload.sub, roleId])
-       await pool.query(`INSERT INTO server_member_roles (server_id, user_id, role_id) VALUES ($1::uuid, $2::uuid, $3::uuid) ON CONFLICT DO NOTHING`, [invite.server_id, payload.sub, roleId])
-       
-       // Increment uses
-       await pool.query(`UPDATE invites SET uses = uses + 1 WHERE code=$1`, [code])
-       
-       return { success: true, serverId: invite.server_id }
      } catch (e) {
        console.error(e)
        return { error: "Error joining server" }
@@ -286,12 +402,13 @@ export async function serverRoutes(app: FastifyInstance) {
   })
 
   app.get("/api/servers/:id/members", async (req) => {
-    const auth = (req.headers as any).authorization as string | undefined
+    const user = getRequestUser(req)
     const id = (req.params as any).id as string
     const channelId = (req.query as any).channelId as string | undefined
-    if (!auth || !id) return { error: "Bad request" }
+    if (!user || !id) return { error: "Bad request" }
     try {
-      jwt.verify(auth.replace(/^Bearer\s+/i, ""), JWT_SECRET)
+      const member = await isServerMember(user.sub, id)
+      if (!member) return { error: "Forbidden" }
 
       const r = await pool.query(
         `SELECT u.id::text, u.username, u.discriminator, u.display_name as "displayName", u.avatar_url as "avatarUrl",
@@ -403,14 +520,29 @@ export async function serverRoutes(app: FastifyInstance) {
     
     try {
       const payload = jwt.verify(auth.replace(/^Bearer\s+/i, ""), JWT_SECRET) as any
-      
-      // Check permission
-      const allowed = await checkPermission(payload.sub, id, 'can_manage_roles')
-      if (!allowed) return { error: "Missing permissions" }
-      
-      // Prevent modifying owner's roles (if target is owner)
-      const s = await pool.query(`SELECT owner_id FROM servers WHERE id=$1::uuid`, [id])
-      if (s.rows[0]?.owner_id === userId) return { error: "Cannot modify owner roles" }
+      const context = await getRoleManagementContext(id, payload.sub)
+      if (!context?.isMember || (!context.isOwner && !context.canManageRoles)) return { error: "Missing permissions" }
+      if (context.ownerId === userId) return { error: "Cannot modify owner roles" }
+
+      const targetHighestRolePosition = await getMemberHighestRolePosition(id, userId)
+      if (!context.isOwner && targetHighestRolePosition != null && !canManageRolePosition(context, targetHighestRolePosition)) {
+        return { error: "Cannot modify a member with an equal or higher role" }
+      }
+
+      const uniqueRoleIds = [...new Set(roleIds.map((roleId: string) => String(roleId)))]
+      const roleRows = await getServerRoles(id, uniqueRoleIds)
+      if (roleRows.length !== uniqueRoleIds.length) return { error: "Invalid role selection" }
+      if (roleRows.some((role) => role.name === "Owner")) return { error: "Owner role cannot be assigned" }
+      if (roleRows.some((role) => !canManageRolePosition(context, Number(role.position)))) {
+        return { error: "Cannot assign a role above or equal to your highest role" }
+      }
+      if (roleRows.some((role) => !canGrantRequestedPermissions(context, {
+        canManageChannels: role.can_manage_channels,
+        canManageServer: role.can_manage_server,
+        canManageRoles: role.can_manage_roles,
+      }))) {
+        return { error: "Cannot assign a role with permissions you do not hold" }
+      }
       
       const client = await pool.connect()
       try {
@@ -420,7 +552,7 @@ export async function serverRoutes(app: FastifyInstance) {
         await client.query(`DELETE FROM server_member_roles WHERE server_id=$1::uuid AND user_id=$2::uuid`, [id, userId])
         
         // Insert new roles
-        for (const rid of roleIds) {
+        for (const rid of uniqueRoleIds) {
            await client.query(
              `INSERT INTO server_member_roles (server_id, user_id, role_id) VALUES ($1::uuid, $2::uuid, $3::uuid) ON CONFLICT DO NOTHING`,
              [id, userId, rid]
@@ -508,24 +640,29 @@ export async function serverRoutes(app: FastifyInstance) {
     
     try {
       const payload = jwt.verify(auth.replace(/^Bearer\s+/i, ""), JWT_SECRET) as any
-      
-      // Verify permissions (must be owner or have manage_roles)
-      // For simplicity, we'll check if user is owner or has manage_server/manage_roles
-      // Real implementation should check specific permissions against the role hierarchy
-      const callerRoles = await pool.query(`
-        SELECT r.can_manage_roles, r.display_group
-        FROM server_member_roles smr
-        JOIN roles r ON smr.role_id = r.id
-        WHERE smr.server_id = $1::uuid AND smr.user_id = $2::uuid
-      `, [serverId, payload.sub])
-      
-      const server = await pool.query(`SELECT owner_id FROM servers WHERE id=$1::uuid`, [serverId])
-      if (!server.rows[0]) return { error: "Server not found" }
-      
-      const isOwner = server.rows[0].owner_id === payload.sub
-      const canManage = callerRoles.rows.some(r => r.can_manage_roles)
-      
-      if (!isOwner && !canManage) return { error: "Unauthorized" }
+      const context = await getRoleManagementContext(serverId, payload.sub)
+      if (!context?.isMember || (!context.isOwner && !context.canManageRoles)) return { error: "Unauthorized" }
+      if (context.ownerId === userId) return { error: "Cannot modify owner roles" }
+
+      const targetHighestRolePosition = await getMemberHighestRolePosition(serverId, userId)
+      if (!context.isOwner && targetHighestRolePosition != null && !canManageRolePosition(context, targetHighestRolePosition)) {
+        return { error: "Cannot modify a member with an equal or higher role" }
+      }
+
+      const uniqueRoles = [...new Set(roles.map((roleId) => String(roleId)))]
+      const roleRows = await getServerRoles(serverId, uniqueRoles)
+      if (roleRows.length !== uniqueRoles.length) return { error: "Invalid role selection" }
+      if (roleRows.some((role) => role.name === "Owner")) return { error: "Owner role cannot be assigned" }
+      if (roleRows.some((role) => !canManageRolePosition(context, Number(role.position)))) {
+        return { error: "Cannot assign a role above or equal to your highest role" }
+      }
+      if (roleRows.some((role) => !canGrantRequestedPermissions(context, {
+        canManageChannels: role.can_manage_channels,
+        canManageServer: role.can_manage_server,
+        canManageRoles: role.can_manage_roles,
+      }))) {
+        return { error: "Cannot assign a role with permissions you do not hold" }
+      }
       
       const client = await pool.connect()
       try {
@@ -534,11 +671,11 @@ export async function serverRoutes(app: FastifyInstance) {
          await client.query(`DELETE FROM server_member_roles WHERE server_id=$1::uuid AND user_id=$2::uuid`, [serverId, userId])
          
          // Insert new roles
-         if (roles.length > 0) {
-            const values = roles.map((rid, i) => `($1::uuid, $2::uuid, $${i+3}::uuid)`).join(',')
+         if (uniqueRoles.length > 0) {
+            const values = uniqueRoles.map((rid, i) => `($1::uuid, $2::uuid, $${i+3}::uuid)`).join(',')
             await client.query(
                `INSERT INTO server_member_roles (server_id, user_id, role_id) VALUES ${values}`,
-               [serverId, userId, ...roles]
+               [serverId, userId, ...uniqueRoles]
             )
          }
          await client.query('COMMIT')
@@ -602,11 +739,12 @@ export async function serverRoutes(app: FastifyInstance) {
   })
 
   app.get("/api/servers/:id/roles", async (req) => {
-    const auth = (req.headers as any).authorization as string | undefined
+    const user = getRequestUser(req)
     const id = (req.params as any).id as string
-    if (!auth || !id) return { error: "Bad request" }
+    if (!user || !id) return { error: "Bad request" }
     try {
-      jwt.verify(auth.replace(/^Bearer\s+/i, ""), JWT_SECRET)
+      const member = await isServerMember(user.sub, id)
+      if (!member) return { error: "Forbidden" }
       const r = await pool.query(`SELECT id::text AS id, name, color, position, can_manage_channels AS "canManageChannels", can_manage_server AS "canManageServer", can_manage_roles AS "canManageRoles" FROM roles WHERE server_id=$1::uuid ORDER BY position ASC, name ASC`, [id])
       return { roles: r.rows }
     } catch {
@@ -620,15 +758,21 @@ export async function serverRoutes(app: FastifyInstance) {
     const body = req.body as any
     const { name, color, position, canManageChannels, canManageServer, canManageRoles } = body || {}
     if (!auth || !id || !name) return { error: "Bad request" }
+    if (String(name).trim().toLowerCase() === "owner") return { error: "Reserved role name" }
     try {
       const payload = jwt.verify(auth.replace(/^Bearer\s+/i, ""), JWT_SECRET) as any
-      const allowed = await checkPermission(payload.sub, id, 'can_manage_roles')
-      if (!allowed) return { error: "Missing permissions" }
+      const context = await getRoleManagementContext(id, payload.sub)
+      if (!context?.isMember || (!context.isOwner && !context.canManageRoles)) return { error: "Missing permissions" }
       
       let pos = position
       if (pos === undefined) {
         const c = await pool.query(`SELECT count(*) as count FROM roles WHERE server_id=$1::uuid`, [id])
         pos = parseInt(c.rows[0].count)
+      }
+      if (!Number.isInteger(pos) || pos < 0) return { error: "Invalid role position" }
+      if (!canManageRolePosition(context, pos)) return { error: "Cannot create role above or equal to your highest role" }
+      if (!canGrantRequestedPermissions(context, { canManageChannels, canManageServer, canManageRoles })) {
+        return { error: "Cannot grant permissions you do not hold" }
       }
 
       const r = await pool.query(
@@ -650,10 +794,32 @@ export async function serverRoutes(app: FastifyInstance) {
     const body = req.body as any
     const { name, color, position, canManageChannels, canManageServer, canManageRoles } = body || {}
     if (!auth || !id || !roleId) return { error: "Bad request" }
+    if (name !== undefined && String(name).trim().toLowerCase() === "owner") return { error: "Reserved role name" }
     try {
       const payload = jwt.verify(auth.replace(/^Bearer\s+/i, ""), JWT_SECRET) as any
-      const allowed = await checkPermission(payload.sub, id, 'can_manage_roles')
-      if (!allowed) return { error: "Missing permissions" }
+      const context = await getRoleManagementContext(id, payload.sub)
+      if (!context?.isMember || (!context.isOwner && !context.canManageRoles)) return { error: "Missing permissions" }
+
+      const targetRoleResult = await pool.query(
+        `SELECT id::text AS id, name, position
+         FROM roles
+         WHERE id = $1::uuid
+           AND server_id = $2::uuid
+         LIMIT 1`,
+        [roleId, id],
+      )
+      const targetRole = targetRoleResult.rows[0] as { id: string; name: string; position: number } | undefined
+      if (!targetRole) return { error: "Not found" }
+      if (targetRole.name === "Owner") return { error: "Owner role cannot be modified" }
+      if (!canManageRolePosition(context, Number(targetRole.position))) {
+        return { error: "Cannot modify a role above or equal to your highest role" }
+      }
+      if (position !== undefined && (!Number.isInteger(position) || position < 0 || !canManageRolePosition(context, position))) {
+        return { error: "Invalid role position" }
+      }
+      if (!canGrantRequestedPermissions(context, { canManageChannels, canManageServer, canManageRoles })) {
+        return { error: "Cannot grant permissions you do not hold" }
+      }
       
       const fields: string[] = []
       const values: any[] = [roleId]
@@ -680,14 +846,51 @@ export async function serverRoutes(app: FastifyInstance) {
   })
 
   app.get("/api/servers/:id/members/:userId", async (req) => {
-    const auth = (req.headers as any).authorization as string | undefined
+    const requester = getRequestUser(req)
     const id = (req.params as any).id as string
     const userId = (req.params as any).userId as string
-    if (!auth || !id || !userId) return { error: "Bad request" }
+    if (!requester || !id || !userId) return { error: "Bad request" }
     try {
-      jwt.verify(auth.replace(/^Bearer\s+/i, ""), JWT_SECRET)
-      // Just verifying token valid for now
-      return { ok: true }
+      const member = await isServerMember(requester.sub, id)
+      if (!member) return { error: "Forbidden" }
+
+      const [primaryRoleRes, rolesRes] = await Promise.all([
+        pool.query(
+          `SELECT r.id::text AS "roleId",
+                  r.name AS "roleName",
+                  r.color AS "roleColor",
+                  r.can_manage_roles AS "canManageRoles",
+                  r.position
+           FROM server_member_roles smr
+           JOIN roles r ON r.id = smr.role_id
+           WHERE smr.server_id = $1::uuid
+             AND smr.user_id = $2::uuid
+           ORDER BY r.position ASC
+           LIMIT 1`,
+          [id, userId],
+        ),
+        pool.query(
+          `SELECT r.id::text AS id, r.name, r.color, r.position
+           FROM server_member_roles smr
+           JOIN roles r ON r.id = smr.role_id
+           WHERE smr.server_id = $1::uuid
+             AND smr.user_id = $2::uuid
+           ORDER BY r.position ASC`,
+          [id, userId],
+        ),
+      ])
+
+      const primaryRole = primaryRoleRes.rows[0]
+      if (!primaryRole) return { member: null }
+      return {
+        member: {
+          roleId: primaryRole.roleId,
+          roleName: primaryRole.roleName,
+          roleColor: primaryRole.roleColor,
+          canManageRoles: !!primaryRole.canManageRoles,
+          roles: rolesRes.rows,
+        },
+      }
     } catch {
       return { error: "Unauthorized" }
     }

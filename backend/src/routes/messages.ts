@@ -2,7 +2,7 @@ import { FastifyInstance, FastifyRequest } from "fastify"
 import jwt from "jsonwebtoken"
 import { pool } from "../lib/db.js"
 import { redis } from "../lib/redis.js"
-import { JWT_SECRET } from "../lib/auth.js"
+import { getChannelAccess, getRequestUser, JWT_SECRET, signRealtimeTicket } from "../lib/auth.js"
 
 const CHANNEL_UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
@@ -446,17 +446,38 @@ async function createNotification(
     }
 }
 
-  app.get("/api/socket-info", async (req: FastifyRequest<{ Querystring: { channel?: string } }>) => {
+  app.get("/api/socket-info", async (req: FastifyRequest<{ Querystring: { channel?: string; serverId?: string } }>, reply) => {
+    const user = getRequestUser(req)
+    if (!user) return reply.status(401).send({ error: "Unauthorized" })
+
     const channel = req.query.channel || ""
-    const base = process.env.REALTIME_BASE_HTTP || "http://localhost:4001"
     const wsBase = process.env.REALTIME_BASE_WS || "ws://localhost:4001/ws"
+    if (!channel) return reply.status(400).send({ error: "Bad request" })
+
     try {
-      const res = await fetch(`${base}/socket-info?channel=${encodeURIComponent(channel)}`)
-      const data = await res.json() as any
-      return { exists: !!data.exists, wsUrl: wsBase }
+      let scopedChannel = ""
+
+      if (channel.startsWith("user:")) {
+        if (channel !== `user:${user.sub}`) {
+          return reply.status(403).send({ error: "Forbidden" })
+        }
+        scopedChannel = channel
+      } else {
+        const channelId = await resolveChannelId(channel, req.query.serverId || undefined)
+        if (!channelId) return reply.status(404).send({ error: "Channel not found" })
+        const access = await getChannelAccess(user.sub, channelId)
+        if (!access?.allowed) {
+          return reply.status(403).send({ error: "Forbidden" })
+        }
+        scopedChannel = channelId
+      }
+
+      const ticket = signRealtimeTicket(user, scopedChannel)
+      const separator = wsBase.includes("?") ? "&" : "?"
+      return { exists: true, channel: scopedChannel, wsUrl: `${wsBase}${separator}ticket=${encodeURIComponent(ticket)}` }
     } catch (e) {
       console.error("Socket info error:", e)
-      return { exists: false, wsUrl: wsBase }
+      return reply.status(500).send({ error: "Socket setup failed" })
     }
   })
 

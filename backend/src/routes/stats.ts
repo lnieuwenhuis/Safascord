@@ -1,10 +1,13 @@
 import { FastifyInstance, FastifyRequest } from "fastify"
 import { pool } from "../lib/db.js"
 import { requestStats } from "../lib/stats.js"
+import { requireAdminUser } from "../lib/auth.js"
 import os from "os"
 
 export async function statsRoutes(app: FastifyInstance) {
-  app.get("/api/stats/summary", async () => {
+  app.get("/api/stats/summary", async (req, reply) => {
+    const admin = await requireAdminUser(req)
+    if (!admin) return reply.status(403).send({ error: "Forbidden" })
     try {
       const [userCount, serverCount, messageCount, channelCount] = await Promise.all([
         pool.query("SELECT count(*) FROM users"),
@@ -24,7 +27,9 @@ export async function statsRoutes(app: FastifyInstance) {
     }
   })
 
-  app.get("/api/stats/activity", async () => {
+  app.get("/api/stats/activity", async (req, reply) => {
+    const admin = await requireAdminUser(req)
+    if (!admin) return reply.status(403).send({ error: "Forbidden" })
     try {
       // Messages per hour (last 24h)
       const messagesPerHour = await pool.query(`
@@ -54,7 +59,9 @@ export async function statsRoutes(app: FastifyInstance) {
     }
   })
 
-  app.get("/api/stats/system", async () => {
+  app.get("/api/stats/system", async (req, reply) => {
+    const admin = await requireAdminUser(req)
+    if (!admin) return reply.status(403).send({ error: "Forbidden" })
     const avgLatency = requestStats.totalRequests > 0 
       ? requestStats.totalLatency / requestStats.totalRequests 
       : 0
@@ -70,7 +77,9 @@ export async function statsRoutes(app: FastifyInstance) {
     }
   })
 
-  app.get("/api/stats/metrics", async (req: FastifyRequest<{ Querystring: { range?: string } }>) => {
+  app.get("/api/stats/metrics", async (req: FastifyRequest<{ Querystring: { range?: string } }>, reply) => {
+    const admin = await requireAdminUser(req)
+    if (!admin) return reply.status(403).send({ error: "Forbidden" })
     try {
       const range = req.query.range || "1h"
       let interval = "now() - interval '1 hour'"

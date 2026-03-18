@@ -7,27 +7,35 @@
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "build:verify": "npm run typecheck && npm run build",
+    "test": "vitest",
+    "test:run": "vitest run",
+    "test:coverage": "vitest run --coverage",
     "start": "node dist/server.js",
     "dev": "ts-node src/server.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.940.0",
     "@fastify/cors": "^8.3.0",
-    "@fastify/multipart": "^7.7.3",
+    "@fastify/multipart": "^9.4.0",
     "@fastify/static": "^6.5.0",
     "bcryptjs": "^2.4.3",
-    "fastify": "^4.29.1",
+    "fastify": "^5.8.2",
     "ioredis": "^5.8.2",
     "jose": "^6.1.0",
     "jsonwebtoken": "^9.0.2",
     "pg": "^8.11.3"
   },
   "devDependencies": {
+    "@types/node": "^24.10.1",
+    "@vitest/coverage-v8": "^4.0.14",
     "@types/bcryptjs": "^2.4.2",
     "@types/jsonwebtoken": "^9.0.5",
     "@types/pg": "^8.10.2",
     "ts-node": "^10.9.2",
     "typescript": "^5.6.3",
-    "undici": "^7.16.0"
+    "undici": "^7.16.0",
+    "vitest": "^4.0.14"
   }
 }

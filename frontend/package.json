@@ -8,9 +8,16 @@
   },
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build",
+    "build": "vite build",
+    "typecheck": "tsc -b",
+    "build:verify": "npm run typecheck && npm run build",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "lint:ci": "eslint . --max-warnings=0",
+    "test": "vitest",
+    "test:run": "vitest run",
+    "test:coverage": "vitest run --coverage",
+    "preview": "vite preview",
+    "serve:static": "bun scripts/serve-dist.mjs"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1004.0",
@@ -38,6 +45,7 @@
     "@types/react": "^19.2.5",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^5.1.1",
+    "@vitest/coverage-v8": "^4.0.14",
     "autoprefixer": "^10.4.22",
     "eslint": "^9.39.1",
     "eslint-plugin-react-hooks": "^7.0.1",
