@@ -278,10 +278,10 @@ export default function ChatPanel({ variant, channelName, channelId, guildName, 
 
     const ws = wsRef.current
     if (ws && ws.readyState === WebSocket.OPEN) {
-      ws.send(JSON.stringify({ type: "typing.start", channel: socketChannelRef.current || channelKey }))
+      ws.send(JSON.stringify({ type: "typing.start", channel: socketChannelRef.current || channelKey, user: display, userId: user?.id }))
       if (idleRef.current) clearTimeout(idleRef.current)
       idleRef.current = setTimeout(() => {
-        ws.send(JSON.stringify({ type: "typing.stop", channel: socketChannelRef.current || channelKey }))
+        ws.send(JSON.stringify({ type: "typing.stop", channel: socketChannelRef.current || channelKey, user: display, userId: user?.id }))
         idleRef.current = null
       }, 1200)
     }
@@ -706,7 +706,7 @@ export default function ChatPanel({ variant, channelName, channelId, guildName, 
       const ws = wsRef.current
       try {
         if (ws && ws.readyState === WebSocket.OPEN) {
-        ws.send(JSON.stringify({ type: "typing.stop", channel: socketChannelRef.current || channelKey }))
+        ws.send(JSON.stringify({ type: "typing.stop", channel: socketChannelRef.current || channelKey, user: display, userId: user?.id }))
       }
     } catch (e) { console.error(e) }
     
@@ -1038,7 +1038,7 @@ export default function ChatPanel({ variant, channelName, channelId, guildName, 
       {typing.size > 0 && (
         <div className="px-4 pt-1 text-xs text-cyan-200/80 animate-pulse font-medium">{Array.from(typing).join(", ")} is typing…</div>
       )}
-      <div className="flex h-auto min-h-16 flex-col justify-center border-t border-cyan-300/12 bg-slate-950/78 px-3 py-2 backdrop-blur-xl">
+      <div className="flex h-auto min-h-16 flex-col justify-center border-t border-cyan-300/12 bg-slate-950/78 px-3 py-2 pb-safe backdrop-blur-xl">
         {selectedFile && (
            <div className="mb-2 flex items-center gap-2 rounded-xl border border-cyan-300/20 bg-slate-900/75 p-2">
               {selectedFile.type.startsWith('image/') ? (

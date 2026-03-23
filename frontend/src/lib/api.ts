@@ -32,8 +32,19 @@ export const WS_BASE = configuredWsBase || (import.meta.env.DEV ? "ws://localhos
 
 export function getFullUrl(url: string | null | undefined): string | null {
   if (!url) return null
-  if (/^https?:\/\//i.test(url)) return url
   if (/^(data|javascript):/i.test(url)) return null
+
+  // Re-anchor any URL that contains /api/uploads/{key} to the current API host.
+  // This transparently fixes attachments/avatars that were stored with a stale
+  // Railway service URL (e.g. safascord-backend-rust-production.up.railway.app)
+  // so they are served through the live API instead of hitting a dead host.
+  const uploadsMatch = /\/api\/uploads\/([^?#\s]+)/.exec(url)
+  if (uploadsMatch) {
+    const apiRoot = API_BASE.endsWith("/api") ? API_BASE.slice(0, -4) : API_BASE.replace(/\/api$/, "")
+    return `${apiRoot}/api/uploads/${uploadsMatch[1]}`
+  }
+
+  if (/^https?:\/\//i.test(url)) return url
   if (url.startsWith("/api") && API_BASE.endsWith("/api")) {
     return `${API_BASE.slice(0, -4)}${url}`
   }

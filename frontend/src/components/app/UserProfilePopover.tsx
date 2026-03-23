@@ -146,9 +146,9 @@ export default function UserProfilePopover({ userId, serverId, isOpen, onClose, 
 
   return (
     <>
-      <div className="fixed inset-0 z-[99]" onClick={onClose} />
-      <div 
-        className="fixed z-[100] bg-popover border border-border rounded-xl shadow-xl w-[300px] overflow-hidden animate-in fade-in zoom-in-95 duration-200"
+      <div className="fixed inset-0 z-[500]" onClick={onClose} />
+      <div
+        className="fixed z-[510] bg-popover border border-border rounded-xl shadow-xl w-[300px] overflow-hidden animate-in fade-in zoom-in-95 duration-200"
         style={{
             top: `${top}px`,
             left: `${popoverLeft}px`

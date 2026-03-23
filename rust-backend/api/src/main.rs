@@ -3509,12 +3509,33 @@ async fn create_message(
         }
     }
     let row = sqlx::query(
-        "WITH inserted AS (INSERT INTO messages (channel_id, user_id, content, attachment_url) VALUES ($1::uuid, $2::uuid, $3::text, $4::text) RETURNING id::text AS id, content AS text, attachment_url, created_at AS ts, user_id) SELECT inserted.id, inserted.text, inserted.attachment_url, inserted.ts, COALESCE(u.display_name, u.username) AS sender_name, u.avatar_url AS sender_avatar FROM inserted LEFT JOIN users u ON u.id = inserted.user_id",
+        r#"WITH inserted AS (
+            INSERT INTO messages (channel_id, user_id, content, attachment_url)
+            VALUES ($1::uuid, $2::uuid, $3::text, $4::text)
+            RETURNING id::text AS id, content AS text, attachment_url, created_at AS ts, user_id
+        )
+        SELECT inserted.id, inserted.text, inserted.attachment_url, inserted.ts,
+               COALESCE(u.display_name, u.username) AS sender_name,
+               u.avatar_url AS sender_avatar,
+               user_role.color AS role_color
+        FROM inserted
+        LEFT JOIN users u ON u.id = inserted.user_id
+        LEFT JOIN LATERAL (
+            SELECT r.color
+            FROM server_member_roles smr
+            JOIN roles r ON r.id = smr.role_id
+            WHERE smr.user_id = inserted.user_id
+              AND $5::uuid IS NOT NULL
+              AND smr.server_id = $5::uuid
+            ORDER BY r.position ASC
+            LIMIT 1
+        ) AS user_role ON true"#,
     )
     .bind(&channel_id)
     .bind(&claims.sub)
     .bind(body.content.clone().unwrap_or_default())
     .bind(body.attachment_url.clone())
+    .bind(server_id.as_deref())
     .fetch_one(&state.pool)
     .await;
     let Ok(row) = row else {
@@ -3533,6 +3554,7 @@ async fn create_message(
         .flatten()
         .unwrap_or_else(|| "User".to_string());
     let sender_avatar: Option<String> = row.try_get("sender_avatar").ok().flatten();
+    let role_color: Option<String> = row.try_get("role_color").ok().flatten();
     let message_payload = json!({
         "id": message_id,
         "text": text,
@@ -3550,7 +3572,8 @@ async fn create_message(
                 "message": message_payload,
                 "user": sender_name,
                 "userAvatar": sender_avatar,
-                "userId": claims.sub
+                "userId": claims.sub,
+                "roleColor": role_color
             }
         }),
     )
@@ -3567,7 +3590,8 @@ async fn create_message(
                     "message": message_payload,
                     "user": sender_name,
                     "userAvatar": sender_avatar,
-                    "userId": claims.sub
+                    "userId": claims.sub,
+                    "roleColor": role_color
                 }
             }),
         )
@@ -3612,7 +3636,7 @@ async fn socket_info(
             .unwrap_or(false),
         Err(_) => false,
     };
-    ok(json!({ "exists": exists, "wsUrl": state.config.realtime_base_ws }))
+    ok(json!({ "exists": exists, "wsUrl": state.config.realtime_base_ws, "channel": channel }))
 }
 async fn delete_message(
     State(state): State<SharedState>,

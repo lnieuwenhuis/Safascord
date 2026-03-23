@@ -104,10 +104,10 @@ export default function AppShell({
 
       <Sheet open={mobileMenuOpen} onOpenChange={setMobileMenuOpen} side="left">
         <div className="grid h-full w-full grid-cols-[68px_1fr] overflow-hidden">
-          <div className="border-r border-cyan-400/15">
+          <div className="h-full border-r border-cyan-400/15">
             <ServerSidebar />
           </div>
-          <div className="overflow-hidden">
+          <div className="h-full overflow-hidden">
             <Sidebar {...sidebarProps} />
           </div>
         </div>
