@@ -220,6 +220,7 @@ async fn ws_handler(
         && !origin.is_empty()
         && !state.allowed_origins.iter().any(|item| item == origin)
     {
+        tracing::warn!("WebSocket connection rejected from origin: {origin} (allowed: {:?})", state.allowed_origins);
         return (StatusCode::FORBIDDEN, "Origin not allowed").into_response();
     }
     ws.on_upgrade(move |socket| handle_socket(state, socket))
