@@ -3609,7 +3609,7 @@ async fn socket_info(
             .unwrap_or(false),
         Err(_) => false,
     };
-    ok(json!({ "exists": exists, "wsUrl": state.config.realtime_base_ws }))
+    ok(json!({ "exists": exists, "wsUrl": state.config.realtime_base_ws, "channel": channel }))
 }
 async fn delete_message(
     State(state): State<SharedState>,

@@ -137,6 +137,14 @@
 }
 
 @layer utilities {
+  /* iOS safe-area helpers */
+  .pb-safe {
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  .pt-safe {
+    padding-top: env(safe-area-inset-top, 0px);
+  }
+
   .safas-page {
     @apply relative min-h-dvh text-slate-100;
   }
