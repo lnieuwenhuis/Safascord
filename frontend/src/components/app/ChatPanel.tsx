@@ -278,10 +278,10 @@ export default function ChatPanel({ variant, channelName, channelId, guildName, 
 
     const ws = wsRef.current
     if (ws && ws.readyState === WebSocket.OPEN) {
-      ws.send(JSON.stringify({ type: "typing.start", channel: socketChannelRef.current || channelKey }))
+      ws.send(JSON.stringify({ type: "typing.start", channel: socketChannelRef.current || channelKey, user: display, userId: user?.id }))
       if (idleRef.current) clearTimeout(idleRef.current)
       idleRef.current = setTimeout(() => {
-        ws.send(JSON.stringify({ type: "typing.stop", channel: socketChannelRef.current || channelKey }))
+        ws.send(JSON.stringify({ type: "typing.stop", channel: socketChannelRef.current || channelKey, user: display, userId: user?.id }))
         idleRef.current = null
       }, 1200)
     }
@@ -706,7 +706,7 @@ export default function ChatPanel({ variant, channelName, channelId, guildName, 
       const ws = wsRef.current
       try {
         if (ws && ws.readyState === WebSocket.OPEN) {
-        ws.send(JSON.stringify({ type: "typing.stop", channel: socketChannelRef.current || channelKey }))
+        ws.send(JSON.stringify({ type: "typing.stop", channel: socketChannelRef.current || channelKey, user: display, userId: user?.id }))
       }
     } catch (e) { console.error(e) }
     
